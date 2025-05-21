@@ -16,14 +16,6 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
 
 
 
-SECRET_KEY = 'django-insecure-s$_z06(q5ktz$8n23os^&uosr$=g$lm)yxogk%4&n4ejq=s2+a'
-
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
-
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
