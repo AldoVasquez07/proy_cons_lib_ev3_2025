@@ -1,0 +1,79 @@
+# --- BACKEND: Django REST Framework ---
+
+# Entorno virtual
+venv/
+env/
+ENV/
+.venv/
+.virtualenv/
+
+# Archivos de configuración de Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg-info/
+*.egg
+*.log
+
+# Archivos de configuración del entorno
+#.env
+.env.*
+*.sqlite3
+db.sqlite3
+
+# Archivos de configuración de Django
+*.pot
+*.pyc
+*.mo
+*.log
+*.bak
+
+# Archivos generados por el servidor
+media/
+staticfiles/
+static/
+node_modules/
+
+# VSCode y PyCharm
+.vscode/
+.idea/
+
+# Archivos de migraciones (opcional ignorarlos si los generas siempre con `makemigrations`)
+**/migrations/*.pyc
+**/migrations/__pycache__/
+# **/migrations/  # Descomenta si quieres ignorar todas las migraciones
+
+# --- FRONTEND: Vue CLI 3 ---
+
+# Dependencias
+frontend/node_modules/
+
+# Archivos de producción
+frontend/dist/
+
+# Archivos locales
+frontend/.env
+frontend/.env.*.local
+
+# Archivos de configuración del IDE
+frontend/.idea/
+frontend/.vscode/
+
+# Otros archivos ignorables
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Cache de testing o herramientas
+frontend/coverage/
+frontend/.nyc_output/
+frontend/.sass-cache/
+frontend/.eslintcache
+frontend/.cache/
+
+# Archivos temporales del sistema operativo
+.DS_Store
+Thumbs.db
