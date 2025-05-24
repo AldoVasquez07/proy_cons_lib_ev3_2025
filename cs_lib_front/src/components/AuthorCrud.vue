@@ -7,37 +7,96 @@
       </button>
     </div>
 
+    <!-- Filtros de búsqueda -->
+    <div class="filters-container">
+      <div class="search-box">
+        <input 
+          v-model="filters.search" 
+          type="text"
+          placeholder="Buscar por DNI, código, nombre o apellidos..." 
+          class="search-input"
+          @input="applyFilters"
+        >
+      </div>
+      <div class="filter-selects">
+        <div class="filter-group">
+          <label for="statusFilter">Estado:</label>
+          <select v-model="filters.status" id="statusFilter" class="filter-select" @change="applyFilters">
+            <option value="">Todos</option>
+            <option value="true">Activos</option>
+            <option value="false">Inactivos</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Estado de carga y errores -->
+    <div v-if="loading" class="loading-container">
+      <div class="loading-spinner"></div>
+      <p>Cargando Autores...</p>
+    </div>
+
+    <div v-if="error" class="error-message">
+      <p>{{ error }}</p>
+      <button @click="loadAutores" class="btn-retry">Reintentar</button>
+    </div>
+
     <!-- Tabla de datos -->
-    <div class="table-container">
+    <div v-if="!loading" class="table-container">
       <table class="crud-table">
         <thead>
           <tr>
             <th>ID</th>
+            <th>DNI</th>
+            <th>Código</th>
             <th>Nombre</th>
-            <th>Nacionalidad</th>
-            <th>Fecha de Nacimiento</th>
+            <th>Apellido Paterno</th>
+            <th>Apellido Materno</th>
+            <th>Fecha de Creación</th>
+            <th>Estado</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="authors.length === 0">
-            <td colspan="5" class="empty-table">No hay autores registrados</td>
+          <tr v-if="filteredAutores.length === 0">
+            <td colspan="9" class="empty-table">No hay Autores que coincidan con la búsqueda</td>
           </tr>
-          <tr v-for="author in authors" :key="author.id">
-            <td>{{ author.id }}</td>
-            <td>{{ author.name }}</td>
-            <td>{{ author.nationality }}</td>
-            <td>{{ formatDate(author.birthDate) }}</td>
+          <tr v-for="autor in filteredAutores" :key="autor.id">
+            <td>{{ autor.id }}</td>
+            <td>{{ autor.dni }}</td>
+            <td>{{ autor.codigo }}</td>
+            <td>{{ autor.nombre }}</td>
+            <td>{{ autor.apellido_paterno }}</td>
+            <td>{{ autor.apellido_materno }}</td>
+            <td>{{ formatDate(autor.fecha_creacion) }}</td>
+            <td>
+              <span :class="['status-badge', autor.flag ? 'status-active' : 'status-inactive']">
+                {{ autor.flag ? 'Activo' : 'Inactivo' }}
+              </span>
+            </td>
             <td class="actions-cell">
-              <button @click="editAuthor(author)" class="btn-edit">Editar</button>
-              <button @click="confirmDelete(author)" class="btn-delete">Eliminar</button>
+              <button @click="editAutor(autor)" class="btn-edit">Editar</button>
+              <button 
+                v-if="autor.flag" 
+                @click="confirmDelete(autor)" 
+                class="btn-delete"
+              >
+                Desactivar
+              </button>
+              <button 
+                v-if="!autor.flag" 
+                @click="confirmReactivate(autor)" 
+                class="btn-reactivate"
+              >
+                Reactivar
+              </button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Modal para agregar/editar autor -->
+    <!-- Modal para agregar/Editar Autor -->
     <div v-if="showAddModal || showEditModal" class="modal-backdrop">
       <div class="modal">
         <div class="modal-header">
@@ -46,160 +105,453 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="authorName">Nombre:</label>
-            <input v-model="formData.name" id="authorName" type="text" class="form-control" required>
+            <label for="autorDni">DNI: <span class="required">*</span></label>
+            <input 
+              v-model="formData.dni" 
+              id="autorDni" 
+              type="text" 
+              class="form-control" 
+              required
+              maxlength="8"
+              pattern="[0-9]{8}"
+              placeholder="12345678"
+            >
+            <div class="form-help-text">Ingrese 8 dígitos</div>
           </div>
           <div class="form-group">
-            <label for="authorNationality">Nacionalidad:</label>
-            <input v-model="formData.nationality" id="authorNationality" type="text" class="form-control" required>
+            <label for="autorCodigo">Código: <span class="required">*</span></label>
+            <input 
+              v-model="formData.codigo" 
+              id="autorCodigo" 
+              type="text" 
+              class="form-control" 
+              required
+              maxlength="20"
+              placeholder="Código único"
+            >
           </div>
           <div class="form-group">
-            <label for="authorBirthDate">Fecha de Nacimiento:</label>
-            <input v-model="formData.birthDate" id="authorBirthDate" type="date" class="form-control" required>
+            <label for="autorNombre">Nombre: <span class="required">*</span></label>
+            <input 
+              v-model="formData.nombre" 
+              id="autorNombre" 
+              type="text" 
+              class="form-control" 
+              required
+              maxlength="100"
+            >
           </div>
           <div class="form-group">
-            <label for="authorBio">Biografía:</label>
-            <textarea v-model="formData.bio" id="authorBio" class="form-control" rows="3"></textarea>
+            <label for="autorApellidoPaterno">Apellido Paterno: <span class="required">*</span></label>
+            <input 
+              v-model="formData.apellido_paterno" 
+              id="autorApellidoPaterno" 
+              type="text" 
+              class="form-control" 
+              required
+              maxlength="100"
+            >
+          </div>
+          <div class="form-group">
+            <label for="autorApellidoMaterno">Apellido Materno: <span class="required">*</span></label>
+            <input 
+              v-model="formData.apellido_materno" 
+              id="autorApellidoMaterno" 
+              type="text" 
+              class="form-control" 
+              required
+              maxlength="100"
+            >
+          </div>
+          <div class="form-group">
+            <label for="autorStatus">Estado:</label>
+            <select v-model="formData.flag" id="autorStatus" class="form-control">
+              <option :value="true">Activo</option>
+              <option :value="false">Inactivo</option>
+            </select>
+          </div>
+          <div v-if="showEditModal" class="form-group">
+            <label>Fecha de Creación:</label>
+            <div class="form-static-value">{{ formatDate(formData.fecha_creacion) }}</div>
           </div>
         </div>
         <div class="modal-footer">
           <button @click="cancelModal" class="btn-cancel">Cancelar</button>
-          <button @click="saveAuthor" class="btn-save">Guardar</button>
+          <button @click="saveAutor" class="btn-save" :disabled="isSaving">
+            {{ isSaving ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Modal de confirmación de eliminación -->
+    <!-- Modal de confirmación de desactivación -->
     <div v-if="showDeleteModal" class="modal-backdrop">
       <div class="modal delete-modal">
         <div class="modal-header">
-          <h3>Confirmar Eliminación</h3>
+          <h3>Confirmar Desactivación</h3>
           <button @click="showDeleteModal = false" class="btn-close">×</button>
         </div>
         <div class="modal-body">
-          <p>¿Estás seguro de que deseas eliminar al autor <strong>{{ authorToDelete?.name }}</strong>?</p>
-          <p class="delete-warning">Esta acción no se puede deshacer.</p>
+          <p>¿Estás seguro de que deseas desactivar a <strong>{{ getFullName(autorToDelete) }}</strong>?</p>
+          <p class="delete-warning">El autor será marcado como inactiva pero no se eliminará permanentemente.</p>
         </div>
         <div class="modal-footer">
           <button @click="showDeleteModal = false" class="btn-cancel">Cancelar</button>
-          <button @click="deleteAuthor" class="btn-confirm-delete">Eliminar</button>
+          <button @click="deactivateautor" class="btn-confirm-delete" :disabled="isDeleting">
+            {{ isDeleting ? 'Desactivando...' : 'Desactivar' }}
+          </button>
         </div>
       </div>
+    </div>
+
+    <!-- Modal de confirmación de reactivación -->
+    <div v-if="showReactivateModal" class="modal-backdrop">
+      <div class="modal delete-modal">
+        <div class="modal-header">
+          <h3>Confirmar Reactivación</h3>
+          <button @click="showReactivateModal = false" class="btn-close">×</button>
+        </div>
+        <div class="modal-body">
+          <p>¿Estás seguro de que deseas reactivar a <strong>{{ getFullName(autorToReactivate) }}</strong>?</p>
+        </div>
+        <div class="modal-footer">
+          <button @click="showReactivateModal = false" class="btn-cancel">Cancelar</button>
+          <button @click="reactivateAutor" class="btn-confirm-reactivate" :disabled="isReactivating">
+            {{ isReactivating ? 'Reactivando...' : 'Reactivar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notificación -->
+    <div v-if="notification.show" :class="['notification', `notification-${notification.type}`]">
+      {{ notification.message }}
     </div>
   </div>
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
-  name: 'AuthorCrud',
+  name: 'AutorCrud',
   data() {
     return {
-      authors: [],
+      autors: [],
+      filteredAutores: [],
       showAddModal: false,
       showEditModal: false,
       showDeleteModal: false,
-      authorToDelete: null,
+      showReactivateModal: false,
+      autorToDelete: null,
+      autorToReactivate: null,
       formData: this.getEmptyFormData(),
-      nextId: 1
+      filters: {
+        search: '',
+        status: ''
+      },
+      loading: false,
+      error: null,
+      isSaving: false,
+      isDeleting: false,
+      isReactivating: false,
+      notification: {
+        show: false,
+        message: '',
+        type: 'success',
+        timeout: null
+      }
     };
   },
   mounted() {
-    this.loadAuthors();
+    this.loadAutores();
   },
   methods: {
-    getEmptyFormData() {
+    // Configurar headers con token de autenticación
+    getAuthHeaders() {
+      const token = localStorage.getItem('accessToken');
       return {
-        id: null,
-        name: '',
-        nationality: '',
-        birthDate: '',
-        bio: ''
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
       };
     },
-    loadAuthors() {
-      // En una app real, aquí se haría una petición a la API
+
+    getEmptyFormData() {
+      return {
+        dni: '',
+        codigo: '',
+        nombre: '',
+        apellido_paterno: '',
+        apellido_materno: '',
+        flag: true
+      };
+    },
+
+    getFullName(autor) {
+      if (!autor) return '';
+      return `${autor.nombre} ${autor.apellido_paterno} ${autor.apellido_materno}`.trim();
+    },
+
+    async loadAutores() {
+      this.loading = true;
+      this.error = null;
+      
       try {
-        const storedAuthors = JSON.parse(localStorage.getItem('authors')) || [];
-        this.authors = storedAuthors;
-        
-        // Determinar el siguiente ID basado en los autores existentes
-        if (this.authors.length > 0) {
-          this.nextId = Math.max(...this.authors.map(a => a.id)) + 1;
-        }
-        
+        const response = await axios.get('http://127.0.0.1:8001/lib/api/autores', {
+          headers: this.getAuthHeaders()
+        });
+        this.autors = response.data;
+        this.applyFilters();
         this.$emit('update-stats');
-      } catch (e) {
-        console.error('Error al cargar autores:', e);
-        this.authors = [];
+      } catch (error) {
+        console.error('Error al cargar autors:', error);
+        if (error.response?.status === 401) {
+          this.error = 'No tienes autorización para acceder a esta información. Por favor, inicia sesión nuevamente.';
+        } else {
+          this.error = 'No se pudieron cargar las autors. Por favor, intenta de nuevo.';
+        }
+      } finally {
+        this.loading = false;
       }
     },
-    saveAuthors() {
-      // En una app real, aquí se haría una petición a la API
-      localStorage.setItem('authors', JSON.stringify(this.authors));
-      this.$emit('update-stats');
-    },
+
     formatDate(dateString) {
       if (!dateString) return 'N/A';
       
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return dateString;
-      
-      return date.toLocaleDateString();
+      try {
+        const date = new Date(dateString);
+        return new Intl.DateTimeFormat('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(date);
+      } catch (e) {
+        return dateString;
+      }
     },
-    editAuthor(author) {
-      this.formData = { ...author };
+
+    editAutor(autor) {
+      this.formData = { ...autor };
       this.showEditModal = true;
     },
-    confirmDelete(author) {
-      this.authorToDelete = author;
+
+    confirmDelete(autor) {
+      this.autorToDelete = autor;
       this.showDeleteModal = true;
     },
-    deleteAuthor() {
-      if (!this.authorToDelete) return;
-      
-      this.authors = this.authors.filter(a => a.id !== this.authorToDelete.id);
-      this.saveAuthors();
-      this.showDeleteModal = false;
-      this.authorToDelete = null;
-      
-      // Mostrar notificación
-      this.showNotification('Autor eliminado correctamente');
+
+    confirmReactivate(autor) {
+      this.autorToReactivate = autor;
+      this.showReactivateModal = true;
     },
-    saveAuthor() {
-      if (!this.formData.name || !this.formData.nationality || !this.formData.birthDate) {
-        alert('Por favor completa todos los campos requeridos');
+
+    async deactivateautor() {
+      if (!this.autorToDelete) return;
+      
+      this.isDeleting = true;
+      
+      try {
+        // Crear datos para desactivación lógica
+        const deactivateData = {
+          ...this.autorToDelete,
+          flag: false
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/autores/${this.autorToDelete.id}/`, 
+          deactivateData,
+          { headers: this.getAuthHeaders() }
+        );
+        
+        // Actualizar lista local
+        const index = this.autors.findIndex(p => p.id === this.autorToDelete.id);
+        if (index !== -1) {
+          this.autors[index] = { ...this.autors[index], flag: false };
+        }
+        
+        this.applyFilters();
+        this.showNotification('autor desactivada correctamente', 'success');
+      } catch (error) {
+        console.error('Error al desactivar la autor:', error);
+        if (error.response?.status === 401) {
+          this.showNotification('No tienes autorización para realizar esta acción', 'error');
+        } else {
+          this.showNotification('Error al desactivar la autor', 'error');
+        }
+      } finally {
+        this.isDeleting = false;
+        this.showDeleteModal = false;
+        this.autorToDelete = null;
+      }
+    },
+
+    async reactivateAutor() {
+      if (!this.autorToReactivate) return;
+      
+      this.isReactivating = true;
+      
+      try {
+        // Crear datos para reactivación
+        const reactivateData = {
+          ...this.autorToReactivate,
+          flag: true
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/autores/${this.autorToReactivate.id}/`, 
+          reactivateData,
+          { headers: this.getAuthHeaders() }
+        );
+        
+        // Actualizar lista local
+        const index = this.autors.findIndex(p => p.id === this.autorToReactivate.id);
+        if (index !== -1) {
+          this.autors[index] = { ...this.autors[index], flag: true };
+        }
+        
+        this.applyFilters();
+        this.showNotification('autor reactivada correctamente', 'success');
+      } catch (error) {
+        console.error('Error al reactivar la autor:', error);
+        if (error.response?.status === 401) {
+          this.showNotification('No tienes autorización para realizar esta acción', 'error');
+        } else {
+          this.showNotification('Error al reactivar la autor', 'error');
+        }
+      } finally {
+        this.isReactivating = false;
+        this.showReactivateModal = false;
+        this.autorToReactivate = null;
+      }
+    },
+
+    async saveAutor() {
+      // Validar campos requeridos
+      if (!this.formData.dni || !this.formData.codigo || !this.formData.nombre || 
+          !this.formData.apellido_paterno || !this.formData.apellido_materno) {
+        this.showNotification('Por favor completa todos los campos requeridos', 'error');
+        return;
+      }
+
+      // Validar formato del DNI
+      if (!/^\d{8}$/.test(this.formData.dni)) {
+        this.showNotification('El DNI debe tener exactamente 8 dígitos', 'error');
         return;
       }
       
-      if (this.showEditModal) {
-        // Actualizar autor existente
-        const index = this.authors.findIndex(a => a.id === this.formData.id);
-        if (index !== -1) {
-          this.authors[index] = { ...this.formData };
+      this.isSaving = true;
+      
+      try {
+        if (this.showEditModal) {
+          // Actualizar autor existente
+          await axios.put(
+            `http://127.0.0.1:8001/lib/api/autores/${this.formData.id}/`, 
+            this.formData,
+            { headers: this.getAuthHeaders() }
+          );
+          
+          // Actualizar en la lista local
+          const index = this.autors.findIndex(p => p.id === this.formData.id);
+          if (index !== -1) {
+            this.autors[index] = { ...this.formData };
+          }
+          
+          this.showNotification('Autor actualizado correctamente', 'success');
+        } else {
+          // Crear Nuevo Autor
+          const response = await axios.post(
+            'http://127.0.0.1:8001/lib/api/autores/', 
+            this.formData,
+            { headers: this.getAuthHeaders() }
+          );
+          
+          // Agregar a la lista local
+          this.autors.push(response.data);
+          
+          this.showNotification('Autor agregada correctamente', 'success');
         }
-      } else {
-        // Crear nuevo autor
-        const newAuthor = {
-          ...this.formData,
-          id: this.nextId++
-        };
-        this.authors.push(newAuthor);
+        
+        this.applyFilters();
+        this.cancelModal();
+      } catch (error) {
+        console.error('Error al guardar el autor:', error);
+        
+        // Mostrar mensaje de error más específico
+        let errorMessage = 'Ha ocurrido un error al guardar el autor';
+        
+        if (error.response?.status === 401) {
+          errorMessage = 'No tienes autorización para realizar esta acción';
+        } else if (error.response?.status === 400 && error.response?.data) {
+          // Manejar errores de validación del servidor
+          const errors = error.response.data;
+          const errorMessages = [];
+          
+          if (errors.dni) errorMessages.push(`DNI: ${errors.dni.join(', ')}`);
+          if (errors.codigo) errorMessages.push(`Código: ${errors.codigo.join(', ')}`);
+          if (errors.nombre) errorMessages.push(`Nombre: ${errors.nombre.join(', ')}`);
+          if (errors.apellido_paterno) errorMessages.push(`Apellido Paterno: ${errors.apellido_paterno.join(', ')}`);
+          if (errors.apellido_materno) errorMessages.push(`Apellido Materno: ${errors.apellido_materno.join(', ')}`);
+          
+          if (errorMessages.length > 0) {
+            errorMessage = errorMessages.join(' | ');
+          }
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+        
+        this.showNotification(errorMessage, 'error');
+      } finally {
+        this.isSaving = false;
       }
-      
-      this.saveAuthors();
-      this.cancelModal();
-      
-      // Mostrar notificación
-      this.showNotification(this.showEditModal ? 'Autor actualizado correctamente' : 'Autor agregado correctamente');
     },
+
     cancelModal() {
       this.showAddModal = false;
       this.showEditModal = false;
       this.formData = this.getEmptyFormData();
     },
-    showNotification(message) {
-      // En una app real, aquí se mostraría una notificación más elegante
-      alert(message);
+
+    showNotification(message, type = 'success') {
+      // Limpiar notificación anterior si existe
+      if (this.notification.timeout) {
+        clearTimeout(this.notification.timeout);
+      }
+      
+      // Mostrar nueva notificación
+      this.notification = {
+        show: true,
+        message,
+        type,
+        timeout: setTimeout(() => {
+          this.notification.show = false;
+        }, 4000)
+      };
+    },
+
+    applyFilters() {
+      let result = [...this.autors];
+      
+      // Filtrar por texto de búsqueda
+      if (this.filters.search) {
+        const searchTerm = this.filters.search.toLowerCase();
+        result = result.filter(autor => {
+          return autor.dni.toLowerCase().includes(searchTerm) || 
+                 autor.codigo.toLowerCase().includes(searchTerm) ||
+                 autor.nombre.toLowerCase().includes(searchTerm) ||
+                 autor.apellido_paterno.toLowerCase().includes(searchTerm) ||
+                 autor.apellido_materno.toLowerCase().includes(searchTerm);
+        });
+      }
+      
+      // Filtrar por estado
+      if (this.filters.status !== '') {
+        const statusValue = this.filters.status === 'true';
+        result = result.filter(autor => autor.flag === statusValue);
+      }
+      
+      this.filteredAutores = result;
     }
   }
 };
@@ -211,6 +563,7 @@ export default {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
 .crud-header {
@@ -247,6 +600,103 @@ export default {
   margin-right: 8px;
 }
 
+/* Estilos para filtros */
+.filters-container {
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: flex-end;
+}
+
+.search-box {
+  flex: 1 1 300px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.filter-selects {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  min-width: 150px;
+}
+
+.filter-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.filter-select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  min-width: 150px;
+}
+
+/* Estado de carga y errores */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: #6b7280;
+}
+
+.loading-spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  background-color: #fef2f2;
+  border: 1px solid #fee2e2;
+  border-radius: 6px;
+  padding: 15px;
+  color: #ef4444;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-retry {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.btn-retry:hover {
+  background-color: #dc2626;
+}
+
+/* Estilos para la tabla */
 .table-container {
   overflow-x: auto;
 }
@@ -279,11 +729,29 @@ export default {
   font-style: italic;
 }
 
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-active {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-inactive {
+  background-color: #fef2f2;
+  color: #991b1b;
+}
+
 .actions-cell {
   white-space: nowrap;
 }
 
-.btn-edit, .btn-delete {
+.btn-edit, .btn-delete, .btn-reactivate {
   padding: 6px 12px;
   border: none;
   border-radius: 4px;
@@ -311,6 +779,15 @@ export default {
   background-color: #dc2626;
 }
 
+.btn-reactivate {
+  background-color: #10b981;
+  color: white;
+}
+
+.btn-reactivate:hover {
+  background-color: #059669;
+}
+
 /* Estilos para modales */
 .modal-backdrop {
   position: fixed;
@@ -328,8 +805,9 @@ export default {
 .modal {
   background-color: white;
   border-radius: 8px;
-  width: 500px;
+  width: 600px;
   max-width: 90%;
+  max-height: 90vh;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
@@ -385,6 +863,11 @@ export default {
   color: #4b5563;
 }
 
+.required {
+  color: #ef4444;
+  font-weight: bold;
+}
+
 .form-control {
   width: 100%;
   padding: 8px 12px;
@@ -399,7 +882,27 @@ export default {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
 
-.btn-save, .btn-cancel, .btn-confirm-delete {
+.form-control:disabled {
+  background-color: #f9fafb;
+  cursor: not-allowed;
+}
+
+.form-help-text {
+  margin-top: 5px;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.form-static-value {
+  padding: 8px 12px;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 1rem;
+  color: #4b5563;
+}
+
+.btn-save, .btn-cancel, .btn-confirm-delete, .btn-confirm-reactivate {
   padding: 8px 16px;
   border: none;
   border-radius: 6px;
@@ -413,8 +916,13 @@ export default {
   color: white;
 }
 
-.btn-save:hover {
+.btn-save:hover:not(:disabled) {
   background-color: #2563eb;
+}
+
+.btn-save:disabled {
+  background-color: #93c5fd;
+  cursor: not-allowed;
 }
 
 .btn-cancel {
@@ -424,19 +932,6 @@ export default {
 
 .btn-cancel:hover {
   background-color: #d1d5db;
-}
 
-.btn-confirm-delete {
-  background-color: #ef4444;
-  color: white;
-}
-
-.btn-confirm-delete:hover {
-  background-color: #dc2626;
-}
-
-.delete-warning {
-  color: #ef4444;
-  font-weight: 500;
 }
 </style>

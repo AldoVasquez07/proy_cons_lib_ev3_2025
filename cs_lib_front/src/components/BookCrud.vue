@@ -68,7 +68,20 @@
             </td>
             <td class="actions-cell">
               <button @click="editBook(book)" class="btn-edit">Editar</button>
-              <button @click="confirmDelete(book)" class="btn-delete">Eliminar</button>
+              <button 
+                v-if="book.flag" 
+                @click="confirmDelete(book)" 
+                class="btn-delete"
+              >
+                Desactivar
+              </button>
+              <button 
+                v-if="!book.flag" 
+                @click="confirmReactivate(book)" 
+                class="btn-reactivate"
+              >
+                Reactivar
+              </button>
             </td>
           </tr>
         </tbody>
@@ -128,21 +141,40 @@
       </div>
     </div>
 
-    <!-- Modal de confirmación de eliminación -->
+    <!-- Modal de confirmación de desactivación -->
     <div v-if="showDeleteModal" class="modal-backdrop">
       <div class="modal delete-modal">
         <div class="modal-header">
-          <h3>Confirmar Eliminación</h3>
+          <h3>Confirmar Desactivación</h3>
           <button @click="showDeleteModal = false" class="btn-close">×</button>
         </div>
         <div class="modal-body">
-          <p>¿Estás seguro de que deseas eliminar el libro <strong>{{ bookToDelete?.nombre }}</strong>?</p>
-          <p class="delete-warning">Esta acción no se puede deshacer.</p>
+          <p>¿Estás seguro de que deseas desactivar el libro <strong>{{ bookToDelete?.nombre }}</strong>?</p>
+          <p class="delete-warning">El libro será marcado como inactivo pero no se eliminará permanentemente.</p>
         </div>
         <div class="modal-footer">
           <button @click="showDeleteModal = false" class="btn-cancel">Cancelar</button>
-          <button @click="deleteBook" class="btn-confirm-delete" :disabled="isDeleting">
-            {{ isDeleting ? 'Eliminando...' : 'Eliminar' }}
+          <button @click="deactivateBook" class="btn-confirm-delete" :disabled="isDeleting">
+            {{ isDeleting ? 'Desactivando...' : 'Desactivar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de confirmación de reactivación -->
+    <div v-if="showReactivateModal" class="modal-backdrop">
+      <div class="modal delete-modal">
+        <div class="modal-header">
+          <h3>Confirmar Reactivación</h3>
+          <button @click="showReactivateModal = false" class="btn-close">×</button>
+        </div>
+        <div class="modal-body">
+          <p>¿Estás seguro de que deseas reactivar el libro <strong>{{ bookToReactivate?.nombre }}</strong>?</p>
+        </div>
+        <div class="modal-footer">
+          <button @click="showReactivateModal = false" class="btn-cancel">Cancelar</button>
+          <button @click="reactivateBook" class="btn-confirm-reactivate" :disabled="isReactivating">
+            {{ isReactivating ? 'Reactivando...' : 'Reactivar' }}
           </button>
         </div>
       </div>
@@ -167,7 +199,9 @@ export default {
       showAddModal: false,
       showEditModal: false,
       showDeleteModal: false,
+      showReactivateModal: false,
       bookToDelete: null,
+      bookToReactivate: null,
       formData: this.getEmptyFormData(),
       filters: {
         search: '',
@@ -177,6 +211,7 @@ export default {
       error: null,
       isSaving: false,
       isDeleting: false,
+      isReactivating: false,
       notification: {
         show: false,
         message: '',
@@ -189,6 +224,15 @@ export default {
     this.loadBooks();
   },
   methods: {
+    // Configurar headers con token de autenticación
+    getAuthHeaders() {
+      const token = localStorage.getItem('accessToken');
+      return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+    },
+
     getEmptyFormData() {
       return {
         codigo: '',
@@ -196,22 +240,30 @@ export default {
         flag: true
       };
     },
+
     async loadBooks() {
       this.loading = true;
       this.error = null;
       
       try {
-        const response = await axios.get('http://127.0.0.1:8001/lib/api/libros');
+        const response = await axios.get('http://127.0.0.1:8001/lib/api/libros', {
+          headers: this.getAuthHeaders()
+        });
         this.books = response.data;
         this.applyFilters();
         this.$emit('update-stats');
       } catch (error) {
         console.error('Error al cargar libros:', error);
-        this.error = 'No se pudieron cargar los libros. Por favor, intenta de nuevo.';
+        if (error.response?.status === 401) {
+          this.error = 'No tienes autorización para acceder a esta información. Por favor, inicia sesión nuevamente.';
+        } else {
+          this.error = 'No se pudieron cargar los libros. Por favor, intenta de nuevo.';
+        }
       } finally {
         this.loading = false;
       }
     },
+
     formatDate(dateString) {
       if (!dateString) return 'N/A';
       
@@ -228,35 +280,102 @@ export default {
         return dateString;
       }
     },
+
     editBook(book) {
       this.formData = { ...book };
       this.showEditModal = true;
     },
+
     confirmDelete(book) {
       this.bookToDelete = book;
       this.showDeleteModal = true;
     },
-    async deleteBook() {
+
+    confirmReactivate(book) {
+      this.bookToReactivate = book;
+      this.showReactivateModal = true;
+    },
+
+    async deactivateBook() {
       if (!this.bookToDelete) return;
       
       this.isDeleting = true;
       
       try {
-        await axios.delete(`http://127.0.0.1:8001/lib/api/libros/${this.bookToDelete.id}/`);
+        // Crear datos para desactivación lógica
+        const deactivateData = {
+          ...this.bookToDelete,
+          flag: false
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/libros/${this.bookToDelete.id}/`, 
+          deactivateData,
+          { headers: this.getAuthHeaders() }
+        );
         
         // Actualizar lista local
-        this.books = this.books.filter(b => b.codigo !== this.bookToDelete.codigo);
+        const index = this.books.findIndex(b => b.codigo === this.bookToDelete.codigo);
+        if (index !== -1) {
+          this.books[index] = { ...this.books[index], flag: false };
+        }
+        
         this.applyFilters();
-        this.showNotification('Libro eliminado correctamente', 'success');
+        this.showNotification('Libro desactivado correctamente', 'success');
       } catch (error) {
-        console.error('Error al eliminar el libro:', error);
-        this.showNotification('Error al eliminar el libro', 'error');
+        console.error('Error al desactivar el libro:', error);
+        if (error.response?.status === 401) {
+          this.showNotification('No tienes autorización para realizar esta acción', 'error');
+        } else {
+          this.showNotification('Error al desactivar el libro', 'error');
+        }
       } finally {
         this.isDeleting = false;
         this.showDeleteModal = false;
         this.bookToDelete = null;
       }
     },
+
+    async reactivateBook() {
+      if (!this.bookToReactivate) return;
+      
+      this.isReactivating = true;
+      
+      try {
+        // Crear datos para reactivación
+        const reactivateData = {
+          ...this.bookToReactivate,
+          flag: true
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/libros/${this.bookToReactivate.id}/`, 
+          reactivateData,
+          { headers: this.getAuthHeaders() }
+        );
+        
+        // Actualizar lista local
+        const index = this.books.findIndex(b => b.codigo === this.bookToReactivate.codigo);
+        if (index !== -1) {
+          this.books[index] = { ...this.books[index], flag: true };
+        }
+        
+        this.applyFilters();
+        this.showNotification('Libro reactivado correctamente', 'success');
+      } catch (error) {
+        console.error('Error al reactivar el libro:', error);
+        if (error.response?.status === 401) {
+          this.showNotification('No tienes autorización para realizar esta acción', 'error');
+        } else {
+          this.showNotification('Error al reactivar el libro', 'error');
+        }
+      } finally {
+        this.isReactivating = false;
+        this.showReactivateModal = false;
+        this.bookToReactivate = null;
+      }
+    },
+
     async saveBook() {
       if (!this.formData.codigo || !this.formData.nombre) {
         this.showNotification('Por favor completa todos los campos requeridos', 'error');
@@ -268,7 +387,11 @@ export default {
       try {
         if (this.showEditModal) {
           // Actualizar libro existente
-          await axios.put(`http://127.0.0.1:8001/lib/api/libros/${this.formData.id}/`, this.formData);
+          await axios.put(
+            `http://127.0.0.1:8001/lib/api/libros/${this.formData.id}/`, 
+            this.formData,
+            { headers: this.getAuthHeaders() }
+          );
           
           // Actualizar en la lista local
           const index = this.books.findIndex(b => b.codigo === this.formData.codigo);
@@ -279,7 +402,11 @@ export default {
           this.showNotification('Libro actualizado correctamente', 'success');
         } else {
           // Crear nuevo libro
-          const response = await axios.post('http://127.0.0.1:8001/lib/api/libros/', this.formData);
+          const response = await axios.post(
+            'http://127.0.0.1:8001/lib/api/libros/', 
+            this.formData,
+            { headers: this.getAuthHeaders() }
+          );
           
           // Agregar a la lista local (con la fecha de creación que viene del servidor)
           this.books.push(response.data);
@@ -293,19 +420,26 @@ export default {
         console.error('Error al guardar el libro:', error);
         
         // Mostrar mensaje de error más específico si está disponible
-        const errorMessage = error.response?.data?.message || 
-                            'Ha ocurrido un error al guardar el libro';
+        let errorMessage = 'Ha ocurrido un error al guardar el libro';
+        
+        if (error.response?.status === 401) {
+          errorMessage = 'No tienes autorización para realizar esta acción';
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
         
         this.showNotification(errorMessage, 'error');
       } finally {
         this.isSaving = false;
       }
     },
+
     cancelModal() {
       this.showAddModal = false;
       this.showEditModal = false;
       this.formData = this.getEmptyFormData();
     },
+
     showNotification(message, type = 'success') {
       // Limpiar notificación anterior si existe
       if (this.notification.timeout) {
@@ -322,6 +456,7 @@ export default {
         }, 3000)
       };
     },
+
     applyFilters() {
       let result = [...this.books];
       
@@ -540,7 +675,7 @@ export default {
   white-space: nowrap;
 }
 
-.btn-edit, .btn-delete {
+.btn-edit, .btn-delete, .btn-reactivate {
   padding: 6px 12px;
   border: none;
   border-radius: 4px;
@@ -566,6 +701,15 @@ export default {
 
 .btn-delete:hover {
   background-color: #dc2626;
+}
+
+.btn-reactivate {
+  background-color: #10b981;
+  color: white;
+}
+
+.btn-reactivate:hover {
+  background-color: #059669;
 }
 
 /* Estilos para modales */
@@ -677,7 +821,7 @@ export default {
   color: #4b5563;
 }
 
-.btn-save, .btn-cancel, .btn-confirm-delete {
+.btn-save, .btn-cancel, .btn-confirm-delete, .btn-confirm-reactivate {
   padding: 8px 16px;
   border: none;
   border-radius: 6px;
@@ -720,6 +864,20 @@ export default {
 
 .btn-confirm-delete:disabled {
   background-color: #fca5a5;
+  cursor: not-allowed;
+}
+
+.btn-confirm-reactivate {
+  background-color: #10b981;
+  color: white;
+}
+
+.btn-confirm-reactivate:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+.btn-confirm-reactivate:disabled {
+  background-color: #86efac;
   cursor: not-allowed;
 }
 

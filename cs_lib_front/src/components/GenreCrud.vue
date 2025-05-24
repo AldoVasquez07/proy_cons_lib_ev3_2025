@@ -12,38 +12,78 @@
       <div class="search-box">
         <input 
           v-model="filters.search" 
-          type="text" 
-          placeholder="Buscar por nombre..." 
+          type="text"
+          placeholder="Buscar por código o nombre..." 
           class="search-input"
           @input="applyFilters"
         >
       </div>
+      <div class="filter-selects">
+        <div class="filter-group">
+          <label for="statusFilter">Estado:</label>
+          <select v-model="filters.status" id="statusFilter" class="filter-select" @change="applyFilters">
+            <option value="">Todos</option>
+            <option value="true">Activos</option>
+            <option value="false">Inactivos</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Estado de carga y errores -->
+    <div v-if="loading" class="loading-container">
+      <div class="loading-spinner"></div>
+      <p>Cargando géneros...</p>
+    </div>
+
+    <div v-if="error" class="error-message">
+      <p>{{ error }}</p>
+      <button @click="loadGenres" class="btn-retry">Reintentar</button>
     </div>
 
     <!-- Tabla de datos -->
-    <div class="table-container">
+    <div v-if="!loading" class="table-container">
       <table class="crud-table">
         <thead>
           <tr>
-            <th>ID</th>
+            <th>Código</th>
             <th>Nombre</th>
             <th>Descripción</th>
-            <th>Libros</th>
+            <th>Fecha de Creación</th>
+            <th>Estado</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredGenres.length === 0">
-            <td colspan="5" class="empty-table">No hay géneros que coincidan con la búsqueda</td>
+            <td colspan="6" class="empty-table">No hay géneros que coincidan con la búsqueda</td>
           </tr>
-          <tr v-for="genre in filteredGenres" :key="genre.id">
-            <td>{{ genre.id }}</td>
-            <td>{{ genre.name }}</td>
-            <td>{{ genre.description || 'Sin descripción' }}</td>
-            <td>{{ getGenreBookCount(genre.id) }}</td>
+          <tr v-for="genre in filteredGenres" :key="genre.codigo">
+            <td>{{ genre.codigo }}</td>
+            <td>{{ genre.nombre }}</td>
+            <td>{{ genre.descripcion || 'Sin descripción' }}</td>
+            <td>{{ formatDate(genre.fecha_creacion) }}</td>
+            <td>
+              <span :class="['status-badge', genre.flag ? 'status-active' : 'status-inactive']">
+                {{ genre.flag ? 'Activo' : 'Inactivo' }}
+              </span>
+            </td>
             <td class="actions-cell">
               <button @click="editGenre(genre)" class="btn-edit">Editar</button>
-              <button @click="confirmDelete(genre)" class="btn-delete">Eliminar</button>
+              <button 
+                v-if="genre.flag" 
+                @click="confirmDelete(genre)" 
+                class="btn-delete"
+              >
+                Desactivar
+              </button>
+              <button 
+                v-if="!genre.flag" 
+                @click="confirmReactivate(genre)" 
+                class="btn-reactivate"
+              >
+                Reactivar
+              </button>
             </td>
           </tr>
         </tbody>
@@ -59,186 +99,404 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
+            <label for="genreCode">Código:</label>
+            <input 
+              v-model="formData.codigo" 
+              id="genreCode" 
+              type="text" 
+              class="form-control" 
+              required
+              :disabled="showEditModal"
+              maxlength="150"
+            >
+            <small v-if="showEditModal" class="form-help-text">El código no puede ser modificado</small>
+          </div>
+          <div class="form-group">
             <label for="genreName">Nombre:</label>
-            <input v-model="formData.name" id="genreName" type="text" class="form-control" required>
+            <input 
+              v-model="formData.nombre" 
+              id="genreName" 
+              type="text" 
+              class="form-control" 
+              required
+              maxlength="150"
+            >
           </div>
           <div class="form-group">
             <label for="genreDescription">Descripción:</label>
-            <textarea v-model="formData.description" id="genreDescription" class="form-control" rows="3"></textarea>
+            <textarea 
+              v-model="formData.descripcion" 
+              id="genreDescription" 
+              class="form-control" 
+              rows="3"
+              maxlength="500"
+            ></textarea>
           </div>
           <div class="form-group">
-            <label for="genreColor">Color (opcional):</label>
-            <input v-model="formData.color" id="genreColor" type="color" class="form-control color-input">
-            <div class="form-help-text">Selecciona un color para identificar visualmente el género</div>
+            <label for="genreStatus">Estado:</label>
+            <select v-model="formData.flag" id="genreStatus" class="form-control">
+              <option :value="true">Activo</option>
+              <option :value="false">Inactivo</option>
+            </select>
+          </div>
+          <div v-if="showEditModal" class="form-group">
+            <label>Fecha de Creación:</label>
+            <div class="form-static-value">{{ formatDate(formData.fecha_creacion) }}</div>
           </div>
         </div>
         <div class="modal-footer">
           <button @click="cancelModal" class="btn-cancel">Cancelar</button>
-          <button @click="saveGenre" class="btn-save">Guardar</button>
+          <button @click="saveGenre" class="btn-save" :disabled="isSaving">
+            {{ isSaving ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Modal de confirmación de eliminación -->
+    <!-- Modal de confirmación de desactivación -->
     <div v-if="showDeleteModal" class="modal-backdrop">
       <div class="modal delete-modal">
         <div class="modal-header">
-          <h3>Confirmar Eliminación</h3>
+          <h3>Confirmar Desactivación</h3>
           <button @click="showDeleteModal = false" class="btn-close">×</button>
         </div>
         <div class="modal-body">
-          <p>¿Estás seguro de que deseas eliminar el género <strong>{{ genreToDelete?.name }}</strong>?</p>
-          <p v-if="getGenreBookCount(genreToDelete?.id) > 0" class="delete-warning">
-            Este género está siendo utilizado por {{ getGenreBookCount(genreToDelete?.id) }} libros.
-            Al eliminarlo, esos libros quedarán sin clasificar.
-          </p>
-          <p class="delete-warning">Esta acción no se puede deshacer.</p>
+          <p>¿Estás seguro de que deseas desactivar el género <strong>{{ genreToDelete?.nombre }}</strong>?</p>
+          <p class="delete-warning">El género será marcado como inactivo pero no se eliminará permanentemente.</p>
         </div>
         <div class="modal-footer">
           <button @click="showDeleteModal = false" class="btn-cancel">Cancelar</button>
-          <button @click="deleteGenre" class="btn-confirm-delete">Eliminar</button>
+          <button @click="deactivateGenre" class="btn-confirm-delete" :disabled="isDeleting">
+            {{ isDeleting ? 'Desactivando...' : 'Desactivar' }}
+          </button>
         </div>
       </div>
+    </div>
+
+    <!-- Modal de confirmación de reactivación -->
+    <div v-if="showReactivateModal" class="modal-backdrop">
+      <div class="modal delete-modal">
+        <div class="modal-header">
+          <h3>Confirmar Reactivación</h3>
+          <button @click="showReactivateModal = false" class="btn-close">×</button>
+        </div>
+        <div class="modal-body">
+          <p>¿Estás seguro de que deseas reactivar el género <strong>{{ genreToReactivate?.nombre }}</strong>?</p>
+        </div>
+        <div class="modal-footer">
+          <button @click="showReactivateModal = false" class="btn-cancel">Cancelar</button>
+          <button @click="reactivateGenre" class="btn-confirm-reactivate" :disabled="isReactivating">
+            {{ isReactivating ? 'Reactivando...' : 'Reactivar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notificación -->
+    <div v-if="notification.show" :class="['notification', `notification-${notification.type}`]">
+      {{ notification.message }}
     </div>
   </div>
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
-  name: 'GenreCrud',
+  name: 'GeneroCrud',
   data() {
     return {
       genres: [],
       filteredGenres: [],
-      books: [],
       showAddModal: false,
       showEditModal: false,
       showDeleteModal: false,
+      showReactivateModal: false,
       genreToDelete: null,
+      genreToReactivate: null,
       formData: this.getEmptyFormData(),
-      nextId: 1,
       filters: {
-        search: ''
+        search: '',
+        status: ''
+      },
+      loading: false,
+      error: null,
+      isSaving: false,
+      isDeleting: false,
+      isReactivating: false,
+      notification: {
+        show: false,
+        message: '',
+        type: 'success',
+        timeout: null
       }
     };
   },
   mounted() {
     this.loadGenres();
-    this.loadBooks();
   },
   methods: {
-    getEmptyFormData() {
+    // Configurar headers con token de autenticación
+    getAuthHeaders() {
+      const token = localStorage.getItem('accessToken');
       return {
-        id: null,
-        name: '',
-        description: '',
-        color: '#3b82f6' // Color azul por defecto
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
       };
     },
-    loadGenres() {
-      // En una app real, aquí se haría una petición a la API
+
+    getEmptyFormData() {
+      return {
+        codigo: '',
+        nombre: '',
+        descripcion: '',
+        flag: true
+      };
+    },
+
+    async loadGenres() {
+      this.loading = true;
+      this.error = null;
+      
       try {
-        const storedGenres = JSON.parse(localStorage.getItem('genres')) || [];
-        this.genres = storedGenres;
+        const response = await axios.get('http://127.0.0.1:8001/lib/api/generos', {
+          headers: this.getAuthHeaders()
+        });
+        this.genres = response.data;
         this.applyFilters();
-        
-        // Determinar el siguiente ID basado en los géneros existentes
-        if (this.genres.length > 0) {
-          this.nextId = Math.max(...this.genres.map(g => g.id)) + 1;
-        }
-        
         this.$emit('update-stats');
-      } catch (e) {
-        console.error('Error al cargar géneros:', e);
-        this.genres = [];
-        this.filteredGenres = [];
+      } catch (error) {
+        console.error('Error al cargar géneros:', error);
+        if (error.response?.status === 401) {
+          this.error = 'No tienes autorización para acceder a esta información. Por favor, inicia sesión nuevamente.';
+        } else {
+          this.error = 'No se pudieron cargar los géneros. Por favor, intenta de nuevo.';
+        }
+      } finally {
+        this.loading = false;
       }
     },
-    loadBooks() {
-      // Cargamos los libros para saber cuántos usan cada género
+
+    formatDate(dateString) {
+      if (!dateString) return 'N/A';
+      
       try {
-        this.books = JSON.parse(localStorage.getItem('books')) || [];
+        const date = new Date(dateString);
+        return new Intl.DateTimeFormat('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(date);
       } catch (e) {
-        console.error('Error al cargar libros:', e);
-        this.books = [];
+        return dateString;
       }
     },
-    saveGenres() {
-      // En una app real, aquí se haría una petición a la API
-      localStorage.setItem('genres', JSON.stringify(this.genres));
-      this.$emit('update-stats');
-    },
-    getGenreBookCount(genreId) {
-      if (!genreId) return 0;
-      return this.books.filter(book => book.genreId === genreId).length;
-    },
+
     editGenre(genre) {
       this.formData = { ...genre };
       this.showEditModal = true;
     },
+
     confirmDelete(genre) {
       this.genreToDelete = genre;
       this.showDeleteModal = true;
     },
-    deleteGenre() {
+
+    confirmReactivate(genre) {
+      this.genreToReactivate = genre;
+      this.showReactivateModal = true;
+    },
+
+    async deactivateGenre() {
       if (!this.genreToDelete) return;
       
-      this.genres = this.genres.filter(g => g.id !== this.genreToDelete.id);
-      this.saveGenres();
-      this.applyFilters();
-      this.showDeleteModal = false;
-      this.genreToDelete = null;
+      this.isDeleting = true;
       
-      // Mostrar notificación
-      this.showNotification('Género eliminado correctamente');
+      try {
+        // Crear datos para desactivación lógica
+        const deactivateData = {
+          ...this.genreToDelete,
+          flag: false
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/generos/${this.genreToDelete.id}/`, 
+          deactivateData,
+          { headers: this.getAuthHeaders() }
+        );
+        
+        // Actualizar lista local
+        const index = this.genres.findIndex(g => g.codigo === this.genreToDelete.codigo);
+        if (index !== -1) {
+          this.genres[index] = { ...this.genres[index], flag: false };
+        }
+        
+        this.applyFilters();
+        this.showNotification('Género desactivado correctamente', 'success');
+      } catch (error) {
+        console.error('Error al desactivar el género:', error);
+        if (error.response?.status === 401) {
+          this.showNotification('No tienes autorización para realizar esta acción', 'error');
+        } else {
+          this.showNotification('Error al desactivar el género', 'error');
+        }
+      } finally {
+        this.isDeleting = false;
+        this.showDeleteModal = false;
+        this.genreToDelete = null;
+      }
     },
-    saveGenre() {
-      if (!this.formData.name) {
-        alert('Por favor completa al menos el nombre del género');
+
+    async reactivateGenre() {
+      if (!this.genreToReactivate) return;
+      
+      this.isReactivating = true;
+      
+      try {
+        // Crear datos para reactivación
+        const reactivateData = {
+          ...this.genreToReactivate,
+          flag: true
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/generos/${this.genreToReactivate.id}/`, 
+          reactivateData,
+          { headers: this.getAuthHeaders() }
+        );
+        
+        // Actualizar lista local
+        const index = this.genres.findIndex(g => g.codigo === this.genreToReactivate.codigo);
+        if (index !== -1) {
+          this.genres[index] = { ...this.genres[index], flag: true };
+        }
+        
+        this.applyFilters();
+        this.showNotification('Género reactivado correctamente', 'success');
+      } catch (error) {
+        console.error('Error al reactivar el género:', error);
+        if (error.response?.status === 401) {
+          this.showNotification('No tienes autorización para realizar esta acción', 'error');
+        } else {
+          this.showNotification('Error al reactivar el género', 'error');
+        }
+      } finally {
+        this.isReactivating = false;
+        this.showReactivateModal = false;
+        this.genreToReactivate = null;
+      }
+    },
+
+    async saveGenre() {
+      if (!this.formData.codigo || !this.formData.nombre) {
+        this.showNotification('Por favor completa todos los campos requeridos', 'error');
         return;
       }
       
-      if (this.showEditModal) {
-        // Actualizar género existente
-        const index = this.genres.findIndex(g => g.id === this.formData.id);
-        if (index !== -1) {
-          this.genres[index] = { ...this.formData };
+      this.isSaving = true;
+      
+      try {
+        if (this.showEditModal) {
+          // Actualizar género existente
+          await axios.put(
+            `http://127.0.0.1:8001/lib/api/generos/${this.formData.id}/`, 
+            this.formData,
+            { headers: this.getAuthHeaders() }
+          );
+          
+          // Actualizar en la lista local
+          const index = this.genres.findIndex(g => g.codigo === this.formData.codigo);
+          if (index !== -1) {
+            this.genres[index] = { ...this.formData };
+          }
+          
+          this.showNotification('Género actualizado correctamente', 'success');
+        } else {
+          // Crear nuevo género
+          const response = await axios.post(
+            'http://127.0.0.1:8001/lib/api/generos/', 
+            this.formData,
+            { headers: this.getAuthHeaders() }
+          );
+          
+          // Agregar a la lista local (con la fecha de creación que viene del servidor)
+          this.genres.push(response.data);
+          
+          this.showNotification('Género agregado correctamente', 'success');
         }
-      } else {
-        // Crear nuevo género
-        const newGenre = {
-          ...this.formData,
-          id: this.nextId++
-        };
-        this.genres.push(newGenre);
+        
+        this.applyFilters();
+        this.cancelModal();
+      } catch (error) {
+        console.error('Error al guardar el género:', error);
+        
+        // Mostrar mensaje de error más específico si está disponible
+        let errorMessage = 'Ha ocurrido un error al guardar el género';
+        
+        if (error.response?.status === 401) {
+          errorMessage = 'No tienes autorización para realizar esta acción';
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response?.data) {
+          // Manejar errores de validación específicos
+          const errors = error.response.data;
+          if (errors.codigo || errors.nombre) {
+            errorMessage = 'Campos requeridos: ';
+            const missingFields = [];
+            if (errors.codigo) missingFields.push('Código');
+            if (errors.nombre) missingFields.push('Nombre');
+            errorMessage += missingFields.join(', ');
+          }
+        }
+        
+        this.showNotification(errorMessage, 'error');
+      } finally {
+        this.isSaving = false;
       }
-      
-      this.saveGenres();
-      this.applyFilters();
-      this.cancelModal();
-      
-      // Mostrar notificación
-      this.showNotification(this.showEditModal ? 'Género actualizado correctamente' : 'Género agregado correctamente');
     },
+
     cancelModal() {
       this.showAddModal = false;
       this.showEditModal = false;
       this.formData = this.getEmptyFormData();
     },
-    showNotification(message) {
-      // En una app real, aquí se mostraría una notificación más elegante
-      alert(message);
+
+    showNotification(message, type = 'success') {
+      // Limpiar notificación anterior si existe
+      if (this.notification.timeout) {
+        clearTimeout(this.notification.timeout);
+      }
+      
+      // Mostrar nueva notificación
+      this.notification = {
+        show: true,
+        message,
+        type,
+        timeout: setTimeout(() => {
+          this.notification.show = false;
+        }, 3000)
+      };
     },
+
     applyFilters() {
       let result = [...this.genres];
       
-      // Filtrar por texto de búsqueda
+      // Filtrar por texto de búsqueda (nombre o código)
       if (this.filters.search) {
         const searchTerm = this.filters.search.toLowerCase();
-        result = result.filter(genre => 
-          genre.name.toLowerCase().includes(searchTerm) || 
-          (genre.description && genre.description.toLowerCase().includes(searchTerm))
-        );
+        result = result.filter(genre => {
+          return genre.nombre.toLowerCase().includes(searchTerm) || 
+                 (genre.codigo && genre.codigo.toLowerCase().includes(searchTerm)) ||
+                 (genre.descripcion && genre.descripcion.toLowerCase().includes(searchTerm));
+        });
+      }
+      
+      // Filtrar por estado
+      if (this.filters.status !== '') {
+        const statusValue = this.filters.status === 'true';
+        result = result.filter(genre => genre.flag === statusValue);
       }
       
       this.filteredGenres = result;
@@ -253,6 +511,7 @@ export default {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
 .crud-header {
@@ -310,6 +569,81 @@ export default {
   font-size: 0.95rem;
 }
 
+.filter-selects {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  min-width: 150px;
+}
+
+.filter-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.filter-select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  min-width: 150px;
+}
+
+/* Estado de carga y errores */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: #6b7280;
+}
+
+.loading-spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  background-color: #fef2f2;
+  border: 1px solid #fee2e2;
+  border-radius: 6px;
+  padding: 15px;
+  color: #ef4444;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-retry {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.btn-retry:hover {
+  background-color: #dc2626;
+}
+
 /* Estilos para la tabla */
 .table-container {
   overflow-x: auto;
@@ -343,11 +677,29 @@ export default {
   font-style: italic;
 }
 
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-active {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-inactive {
+  background-color: #fef2f2;
+  color: #991b1b;
+}
+
 .actions-cell {
   white-space: nowrap;
 }
 
-.btn-edit, .btn-delete {
+.btn-edit, .btn-delete, .btn-reactivate {
   padding: 6px 12px;
   border: none;
   border-radius: 4px;
@@ -375,6 +727,15 @@ export default {
   background-color: #dc2626;
 }
 
+.btn-reactivate {
+  background-color: #10b981;
+  color: white;
+}
+
+.btn-reactivate:hover {
+  background-color: #059669;
+}
+
 /* Estilos para modales */
 .modal-backdrop {
   position: fixed;
@@ -392,7 +753,7 @@ export default {
 .modal {
   background-color: white;
   border-radius: 8px;
-  width: 500px;
+  width: 600px;
   max-width: 90%;
   max-height: 90vh;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -458,16 +819,15 @@ export default {
   font-size: 1rem;
 }
 
-.color-input {
-  height: 40px;
-  padding: 2px;
-  cursor: pointer;
-}
-
 .form-control:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.form-control:disabled {
+  background-color: #f9fafb;
+  cursor: not-allowed;
 }
 
 .form-help-text {
@@ -476,7 +836,16 @@ export default {
   color: #6b7280;
 }
 
-.btn-save, .btn-cancel, .btn-confirm-delete {
+.form-static-value {
+  padding: 8px 12px;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 1rem;
+  color: #4b5563;
+}
+
+.btn-save, .btn-cancel, .btn-confirm-delete, .btn-confirm-reactivate {
   padding: 8px 16px;
   border: none;
   border-radius: 6px;
@@ -490,8 +859,13 @@ export default {
   color: white;
 }
 
-.btn-save:hover {
+.btn-save:hover:not(:disabled) {
   background-color: #2563eb;
+}
+
+.btn-save:disabled {
+  background-color: #93c5fd;
+  cursor: not-allowed;
 }
 
 .btn-cancel {
@@ -508,12 +882,64 @@ export default {
   color: white;
 }
 
-.btn-confirm-delete:hover {
+.btn-confirm-delete:hover:not(:disabled) {
   background-color: #dc2626;
+}
+
+.btn-confirm-delete:disabled {
+  background-color: #fca5a5;
+  cursor: not-allowed;
+}
+
+.btn-confirm-reactivate {
+  background-color: #10b981;
+  color: white;
+}
+
+.btn-confirm-reactivate:hover:not(:disabled) {
+  background-color: #059669;
+}
+
+.btn-confirm-reactivate:disabled {
+  background-color: #86efac;
+  cursor: not-allowed;
 }
 
 .delete-warning {
   color: #ef4444;
   font-weight: 500;
+}
+
+/* Notificaciones */
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-width: 300px;
+  z-index: 200;
+  animation: fadeIn 0.3s, fadeOut 0.5s 2.5s forwards;
+}
+
+.notification-success {
+  background-color: #10b981;
+  color: white;
+}
+
+.notification-error {
+  background-color: #ef4444;
+  color: white;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-20px); }
 }
 </style>

@@ -143,14 +143,29 @@ export default {
     localStorage.removeItem('currentRoute');
     window.location.reload();
   },
+  getAuthHeaders() {
+    const token = localStorage.getItem('accessToken');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : ''
+    };
+  },
   async fetchStats() {
     try {
+      const headers = this.getAuthHeaders();
+      
       const [booksRes, authorsRes, genresRes] = await Promise.all([
-        fetch('http://127.0.0.1:8001/lib/api/libros'),
-        fetch('http://127.0.0.1:8001/lib/api/autores'),
-        fetch('http://127.0.0.1:8001/lib/api/generos'),
+        fetch('http://127.0.0.1:8001/lib/api/libros/', { headers }),
+        fetch('http://127.0.0.1:8001/lib/api/autores/', { headers }),
+        fetch('http://127.0.0.1:8001/lib/api/generos/', { headers }),
       ]);
 
+      // Verificar si hay errores de autorización
+      if (booksRes.status === 401 || authorsRes.status === 401 || genresRes.status === 401) {
+        console.error('Token de acceso inválido o expirado');
+        this.logout();
+        return;
+      }
 
       if (!booksRes.ok || !authorsRes.ok || !genresRes.ok) {
         throw new Error('Error al obtener los datos');
