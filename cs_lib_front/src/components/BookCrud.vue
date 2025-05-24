@@ -50,12 +50,13 @@
             <th>Nombre</th>
             <th>Fecha de Creación</th>
             <th>Estado</th>
+            <th>Detalle</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredBooks.length === 0">
-            <td colspan="5" class="empty-table">No hay libros que coincidan con la búsqueda</td>
+            <td colspan="6" class="empty-table">No hay libros que coincidan con la búsqueda</td>
           </tr>
           <tr v-for="book in filteredBooks" :key="book.codigo">
             <td>{{ book.codigo }}</td>
@@ -65,6 +66,14 @@
               <span :class="['status-badge', book.flag ? 'status-active' : 'status-inactive']">
                 {{ book.flag ? 'Activo' : 'Inactivo' }}
               </span>
+            </td>
+            <td class="detail-cell">
+              <button @click="viewBookDetail(book)" class="btn-detail" title="Ver detalle">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
             </td>
             <td class="actions-cell">
               <button @click="editBook(book)" class="btn-edit">Editar</button>
@@ -184,14 +193,26 @@
     <div v-if="notification.show" :class="['notification', `notification-${notification.type}`]">
       {{ notification.message }}
     </div>
+
+    <!-- Componente de detalle del libro -->
+    <LibroDetail 
+      v-if="showBookDetail"
+      :book="selectedBook"
+      @close="closeBookDetail"
+      @book-updated="handleBookUpdated"
+    />
   </div>
 </template>
 
 <script>
 import axios from 'axios';
+import LibroDetail from './LibroDetail.vue';
 
 export default {
   name: 'LibroCrud',
+  components: {
+    LibroDetail
+  },
   data() {
     return {
       books: [],
@@ -200,6 +221,8 @@ export default {
       showEditModal: false,
       showDeleteModal: false,
       showReactivateModal: false,
+      showBookDetail: false,
+      selectedBook: null,
       bookToDelete: null,
       bookToReactivate: null,
       formData: this.getEmptyFormData(),
@@ -279,6 +302,21 @@ export default {
       } catch (e) {
         return dateString;
       }
+    },
+
+    viewBookDetail(book) {
+      this.selectedBook = book;
+      this.showBookDetail = true;
+    },
+
+    closeBookDetail() {
+      this.showBookDetail = false;
+      this.selectedBook = null;
+    },
+
+    handleBookUpdated() {
+      // Recargar la lista de libros cuando se actualice desde el detalle
+      this.loadBooks();
     },
 
     editBook(book) {
@@ -669,6 +707,27 @@ export default {
 .status-inactive {
   background-color: #fef2f2;
   color: #991b1b;
+}
+
+.detail-cell {
+  text-align: center;
+}
+
+.btn-detail {
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-detail:hover {
+  background-color: #4b5563;
 }
 
 .actions-cell {
