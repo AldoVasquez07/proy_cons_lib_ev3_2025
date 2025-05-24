@@ -54,12 +54,13 @@
             <th>Apellido Materno</th>
             <th>Fecha de Creación</th>
             <th>Estado</th>
+            <th>Detalle</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredAutores.length === 0">
-            <td colspan="9" class="empty-table">No hay Autores que coincidan con la búsqueda</td>
+            <td colspan="10" class="empty-table">No hay Autores que coincidan con la búsqueda</td>
           </tr>
           <tr v-for="autor in filteredAutores" :key="autor.id">
             <td>{{ autor.id }}</td>
@@ -73,6 +74,14 @@
               <span :class="['status-badge', autor.flag ? 'status-active' : 'status-inactive']">
                 {{ autor.flag ? 'Activo' : 'Inactivo' }}
               </span>
+            </td>
+            <td class="detail-cell">
+              <button @click="viewAutorDetail(autor)" class="btn-detail" title="Ver detalle">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+              </button>
             </td>
             <td class="actions-cell">
               <button @click="editAutor(autor)" class="btn-edit">Editar</button>
@@ -193,7 +202,7 @@
         </div>
         <div class="modal-body">
           <p>¿Estás seguro de que deseas desactivar a <strong>{{ getFullName(autorToDelete) }}</strong>?</p>
-          <p class="delete-warning">El autor será marcado como inactiva pero no se eliminará permanentemente.</p>
+          <p class="delete-warning">El autor será marcado como inactivo pero no se eliminará permanentemente.</p>
         </div>
         <div class="modal-footer">
           <button @click="showDeleteModal = false" class="btn-cancel">Cancelar</button>
@@ -227,14 +236,26 @@
     <div v-if="notification.show" :class="['notification', `notification-${notification.type}`]">
       {{ notification.message }}
     </div>
+
+    <!-- Componente de detalle del autor -->
+    <AutorDetail 
+      v-if="showAutorDetail"
+      :autor="selectedAutor"
+      @close="closeAutorDetail"
+      @autor-updated="handleAutorUpdated"
+    />
   </div>
 </template>
 
 <script>
 import axios from 'axios';
+import AutorDetail from './AutorDetail.vue';
 
 export default {
   name: 'AutorCrud',
+  components: {
+    AutorDetail
+  },
   data() {
     return {
       autors: [],
@@ -243,6 +264,8 @@ export default {
       showEditModal: false,
       showDeleteModal: false,
       showReactivateModal: false,
+      showAutorDetail: false,
+      selectedAutor: null,
       autorToDelete: null,
       autorToReactivate: null,
       formData: this.getEmptyFormData(),
@@ -304,11 +327,11 @@ export default {
         this.applyFilters();
         this.$emit('update-stats');
       } catch (error) {
-        console.error('Error al cargar autors:', error);
+        console.error('Error al cargar autores:', error);
         if (error.response?.status === 401) {
           this.error = 'No tienes autorización para acceder a esta información. Por favor, inicia sesión nuevamente.';
         } else {
-          this.error = 'No se pudieron cargar las autors. Por favor, intenta de nuevo.';
+          this.error = 'No se pudieron cargar los autores. Por favor, intenta de nuevo.';
         }
       } finally {
         this.loading = false;
@@ -330,6 +353,21 @@ export default {
       } catch (e) {
         return dateString;
       }
+    },
+
+    viewAutorDetail(autor) {
+      this.selectedAutor = autor;
+      this.showAutorDetail = true;
+    },
+
+    closeAutorDetail() {
+      this.showAutorDetail = false;
+      this.selectedAutor = null;
+    },
+
+    handleAutorUpdated() {
+      // Recargar la lista de autores cuando se actualice desde el detalle
+      this.loadAutores();
     },
 
     editAutor(autor) {
@@ -372,13 +410,13 @@ export default {
         }
         
         this.applyFilters();
-        this.showNotification('autor desactivada correctamente', 'success');
+        this.showNotification('Autor desactivado correctamente', 'success');
       } catch (error) {
-        console.error('Error al desactivar la autor:', error);
+        console.error('Error al desactivar el autor:', error);
         if (error.response?.status === 401) {
           this.showNotification('No tienes autorización para realizar esta acción', 'error');
         } else {
-          this.showNotification('Error al desactivar la autor', 'error');
+          this.showNotification('Error al desactivar el autor', 'error');
         }
       } finally {
         this.isDeleting = false;
@@ -412,13 +450,13 @@ export default {
         }
         
         this.applyFilters();
-        this.showNotification('autor reactivada correctamente', 'success');
+        this.showNotification('Autor reactivado correctamente', 'success');
       } catch (error) {
-        console.error('Error al reactivar la autor:', error);
+        console.error('Error al reactivar el autor:', error);
         if (error.response?.status === 401) {
           this.showNotification('No tienes autorización para realizar esta acción', 'error');
         } else {
-          this.showNotification('Error al reactivar la autor', 'error');
+          this.showNotification('Error al reactivar el autor', 'error');
         }
       } finally {
         this.isReactivating = false;
@@ -470,7 +508,7 @@ export default {
           // Agregar a la lista local
           this.autors.push(response.data);
           
-          this.showNotification('Autor agregada correctamente', 'success');
+          this.showNotification('Autor agregado correctamente', 'success');
         }
         
         this.applyFilters();
@@ -745,6 +783,27 @@ export default {
 .status-inactive {
   background-color: #fef2f2;
   color: #991b1b;
+}
+
+.detail-cell {
+  text-align: center;
+}
+
+.btn-detail {
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-detail:hover {
+  background-color: #4b5563;
 }
 
 .actions-cell {
