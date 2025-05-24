@@ -64,7 +64,7 @@
           <div v-else class="books-grid">
             <div v-for="bookGenre in genreBooks" :key="bookGenre.id" class="book-card">
               <div class="book-info">
-                <h4>{{ bookGenre.libro_nombre || 'Libro sin nombre' }}</h4>
+                <h4>{{ bookGenre.libro_detalle.nombre || 'Libro sin nombre' }}</h4>
                 <p class="book-details">ID: {{ bookGenre.libro }}</p>
                 <span :class="['status-badge-small', bookGenre.flag ? 'status-active' : 'status-inactive']">
                   {{ bookGenre.flag ? 'Activo' : 'Inactivo' }}

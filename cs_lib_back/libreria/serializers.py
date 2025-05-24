@@ -70,6 +70,7 @@ class LibroGeneroSerializer(serializers.ModelSerializer):
     class Meta:
         model = LibroGenero
         fields = ['id', 'libro', 'genero', 'flag', 'libro_detalle', 'genero_detalle']
+        
 
     def get_libro_detalle(self, obj):
         return {

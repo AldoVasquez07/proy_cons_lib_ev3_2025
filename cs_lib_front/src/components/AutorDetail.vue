@@ -80,9 +80,9 @@
           <div v-else class="books-grid">
             <div v-for="authorBook in authorBooks" :key="authorBook.id" class="book-card">
               <div class="book-info">
-                <h4>{{ authorBook.libro_nombre || 'Libro sin nombre' }}</h4>
+                <h4>{{ authorBook.libro_detalle.nombre || 'Libro sin nombre' }}</h4>
                 <p class="book-details">
-                  Código: {{ authorBook.libro_codigo || 'N/A' }}
+                  Código: {{ authorBook.libro_detalle.codigo || 'N/A' }}
                 </p>
                 <p class="book-details">
                   ID Libro: {{ authorBook.libro }}

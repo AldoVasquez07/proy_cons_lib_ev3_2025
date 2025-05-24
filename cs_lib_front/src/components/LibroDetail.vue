@@ -64,7 +64,7 @@
           <div v-else class="authors-grid">
             <div v-for="authorBook in bookAuthors" :key="authorBook.id" class="author-card">
               <div class="author-info">
-                <h4>{{ authorBook.autor_nombre || 'Autor sin nombre' }}</h4>
+                <h4>{{ authorBook.autor_detalle.nombre + " " +  authorBook.autor_detalle.apellido_paterno || 'Autor sin nombre' }}</h4>
                 <p class="author-details">ID: {{ authorBook.autor }}</p>
                 <span :class="['status-badge-small', authorBook.flag ? 'status-active' : 'status-inactive']">
                   {{ authorBook.flag ? 'Activo' : 'Inactivo' }}
@@ -116,7 +116,7 @@
           <div v-else class="categories-grid">
             <div v-for="categoryBook in bookCategories" :key="categoryBook.id" class="category-card">
               <div class="category-info">
-                <h4>{{ categoryBook.categoria_nombre || 'Categoría sin nombre' }}</h4>
+                <h4>{{ categoryBook.genero_detalle.nombre || 'Categoría sin nombre' }}</h4>
                 <p class="category-details">ID: {{ categoryBook.categoria }}</p>
                 <span :class="['status-badge-small', categoryBook.flag ? 'status-active' : 'status-inactive']">
                   {{ categoryBook.flag ? 'Activo' : 'Inactivo' }}
