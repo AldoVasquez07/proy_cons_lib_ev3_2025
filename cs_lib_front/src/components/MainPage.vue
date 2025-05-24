@@ -74,6 +74,7 @@
 </template>
 
 <script>
+//import axios from 'axios';
 import AuthorCrud from './AuthorCrud.vue';
 import BookCrud from './BookCrud.vue';
 import GenreCrud from './GenreCrud.vue';
@@ -128,52 +129,48 @@ export default {
     this.fetchStats();
   },
   methods: {
-    toggleSidebar() {
-      this.sidebarCollapsed = !this.sidebarCollapsed;
-    },
-    navigateTo(route) {
-      this.activeItem = route;
-      // Guardar la ruta actual en localStorage para mantenerla al recargar
-      localStorage.setItem('currentRoute', route);
-    },
-    logout() {
-      // Eliminar tokens y cualquier dato de sesión
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('userEmail');
-      localStorage.removeItem('currentRoute');
-      // Recargar la página o redirigir al login
-      window.location.reload();
-    },
-    fetchStats() {
-      // En una aplicación real, aquí se haría una petición al API
-      // Por ahora, usaremos datos del localStorage como ejemplo
-      
-      // Contar autores
-      try {
-        const authors = JSON.parse(localStorage.getItem('authors')) || [];
-        this.stats.authors = authors.length;
-      } catch (e) {
-        this.stats.authors = 0;
-      }
-      
-      // Contar libros
-      try {
-        const books = JSON.parse(localStorage.getItem('books')) || [];
-        this.stats.books = books.length;
-      } catch (e) {
-        this.stats.books = 0;
-      }
-      
-      // Contar géneros
-      try {
-        const genres = JSON.parse(localStorage.getItem('genres')) || [];
-        this.stats.genres = genres.length;
-      } catch (e) {
-        this.stats.genres = 0;
-      }
-    }
+  toggleSidebar() {
+    this.sidebarCollapsed = !this.sidebarCollapsed;
   },
+  navigateTo(route) {
+    this.activeItem = route;
+    localStorage.setItem('currentRoute', route);
+  },
+  logout() {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('currentRoute');
+    window.location.reload();
+  },
+  async fetchStats() {
+    try {
+      const [booksRes, authorsRes, genresRes] = await Promise.all([
+        fetch('http://127.0.0.1:8001/lib/api/libros'),
+        fetch('http://127.0.0.1:8001/lib/api/autores'),
+        fetch('http://127.0.0.1:8001/lib/api/generos'),
+      ]);
+
+
+      if (!booksRes.ok || !authorsRes.ok || !genresRes.ok) {
+        throw new Error('Error al obtener los datos');
+      }
+
+      const books = await booksRes.json();
+      const authors = await authorsRes.json();
+      const genres = await genresRes.json();
+
+      this.stats.books = Array.isArray(books) ? books.length : 0;
+      this.stats.authors = Array.isArray(authors) ? authors.length : 0;
+      this.stats.genres = Array.isArray(genres) ? genres.length : 0;
+    } catch (error) {
+      console.error('Error al cargar estadísticas:', error);
+      this.stats.books = 0;
+      this.stats.authors = 0;
+      this.stats.genres = 0;
+    }
+  }
+},
 };
 </script>
 

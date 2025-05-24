@@ -12,55 +12,60 @@
       <div class="search-box">
         <input 
           v-model="filters.search" 
-          type="text" 
-          placeholder="Buscar por título o autor..." 
+          type="text"
+          placeholder="Buscar por nombre o código..." 
           class="search-input"
           @input="applyFilters"
         >
       </div>
       <div class="filter-selects">
         <div class="filter-group">
-          <label for="genreFilter">Género:</label>
-          <select v-model="filters.genre" id="genreFilter" class="filter-select" @change="applyFilters">
-            <option value="">Todos los géneros</option>
-            <option v-for="genre in genres" :key="genre.id" :value="genre.id">{{ genre.name }}</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label for="authorFilter">Autor:</label>
-          <select v-model="filters.author" id="authorFilter" class="filter-select" @change="applyFilters">
-            <option value="">Todos los autores</option>
-            <option v-for="author in authors" :key="author.id" :value="author.id">{{ author.name }}</option>
+          <label for="statusFilter">Estado:</label>
+          <select v-model="filters.status" id="statusFilter" class="filter-select" @change="applyFilters">
+            <option value="">Todos</option>
+            <option value="true">Activos</option>
+            <option value="false">Inactivos</option>
           </select>
         </div>
       </div>
     </div>
 
+    <!-- Estado de carga y errores -->
+    <div v-if="loading" class="loading-container">
+      <div class="loading-spinner"></div>
+      <p>Cargando libros...</p>
+    </div>
+
+    <div v-if="error" class="error-message">
+      <p>{{ error }}</p>
+      <button @click="loadBooks" class="btn-retry">Reintentar</button>
+    </div>
+
     <!-- Tabla de datos -->
-    <div class="table-container">
+    <div v-if="!loading" class="table-container">
       <table class="crud-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Título</th>
-            <th>Autor</th>
-            <th>Género</th>
-            <th>Año</th>
-            <th>ISBN</th>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Fecha de Creación</th>
+            <th>Estado</th>
             <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="filteredBooks.length === 0">
-            <td colspan="7" class="empty-table">No hay libros que coincidan con la búsqueda</td>
+            <td colspan="5" class="empty-table">No hay libros que coincidan con la búsqueda</td>
           </tr>
-          <tr v-for="book in filteredBooks" :key="book.id">
-            <td>{{ book.id }}</td>
-            <td>{{ book.title }}</td>
-            <td>{{ getAuthorName(book.authorId) }}</td>
-            <td>{{ getGenreName(book.genreId) }}</td>
-            <td>{{ book.year }}</td>
-            <td>{{ book.isbn }}</td>
+          <tr v-for="book in filteredBooks" :key="book.codigo">
+            <td>{{ book.codigo }}</td>
+            <td>{{ book.nombre }}</td>
+            <td>{{ formatDate(book.fecha_creacion) }}</td>
+            <td>
+              <span :class="['status-badge', book.flag ? 'status-active' : 'status-inactive']">
+                {{ book.flag ? 'Activo' : 'Inactivo' }}
+              </span>
+            </td>
             <td class="actions-cell">
               <button @click="editBook(book)" class="btn-edit">Editar</button>
               <button @click="confirmDelete(book)" class="btn-delete">Eliminar</button>
@@ -79,57 +84,46 @@
         </div>
         <div class="modal-body">
           <div class="form-group">
-            <label for="bookTitle">Título:</label>
-            <input v-model="formData.title" id="bookTitle" type="text" class="form-control" required>
+            <label for="bookCode">Código:</label>
+            <input 
+              v-model="formData.codigo" 
+              id="bookCode" 
+              type="text" 
+              class="form-control" 
+              required
+              :disabled="showEditModal"
+              maxlength="150"
+            >
+            <small v-if="showEditModal" class="form-help-text">El código no puede ser modificado</small>
           </div>
           <div class="form-group">
-            <label for="bookAuthor">Autor:</label>
-            <select v-model="formData.authorId" id="bookAuthor" class="form-control" required>
-              <option value="" disabled>Selecciona un autor</option>
-              <option v-for="author in authors" :key="author.id" :value="author.id">{{ author.name }}</option>
+            <label for="bookName">Nombre:</label>
+            <input 
+              v-model="formData.nombre" 
+              id="bookName" 
+              type="text" 
+              class="form-control" 
+              required
+              maxlength="150"
+            >
+          </div>
+          <div class="form-group">
+            <label for="bookStatus">Estado:</label>
+            <select v-model="formData.flag" id="bookStatus" class="form-control">
+              <option :value="true">Activo</option>
+              <option :value="false">Inactivo</option>
             </select>
-            <div v-if="authors.length === 0" class="form-help-text">
-              No hay autores disponibles. <a @click="goToAuthors" href="#" class="link">Agregar autor</a>
-            </div>
           </div>
-          <div class="form-group">
-            <label for="bookGenre">Género:</label>
-            <select v-model="formData.genreId" id="bookGenre" class="form-control" required>
-              <option value="" disabled>Selecciona un género</option>
-              <option v-for="genre in genres" :key="genre.id" :value="genre.id">{{ genre.name }}</option>
-            </select>
-            <div v-if="genres.length === 0" class="form-help-text">
-              No hay géneros disponibles. <a @click="goToGenres" href="#" class="link">Agregar género</a>
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group half-width">
-              <label for="bookYear">Año de publicación:</label>
-              <input v-model="formData.year" id="bookYear" type="number" min="1000" max="2099" class="form-control" required>
-            </div>
-            <div class="form-group half-width">
-              <label for="bookISBN">ISBN:</label>
-              <input v-model="formData.isbn" id="bookISBN" type="text" class="form-control">
-            </div>
-          </div>
-          <div class="form-group">
-            <label for="bookDescription">Descripción:</label>
-            <textarea v-model="formData.description" id="bookDescription" class="form-control" rows="3"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group half-width">
-              <label for="bookPublisher">Editorial:</label>
-              <input v-model="formData.publisher" id="bookPublisher" type="text" class="form-control">
-            </div>
-            <div class="form-group half-width">
-              <label for="bookPages">Número de páginas:</label>
-              <input v-model="formData.pages" id="bookPages" type="number" min="1" class="form-control">
-            </div>
+          <div v-if="showEditModal" class="form-group">
+            <label>Fecha de Creación:</label>
+            <div class="form-static-value">{{ formatDate(formData.fecha_creacion) }}</div>
           </div>
         </div>
         <div class="modal-footer">
           <button @click="cancelModal" class="btn-cancel">Cancelar</button>
-          <button @click="saveBook" class="btn-save">Guardar</button>
+          <button @click="saveBook" class="btn-save" :disabled="isSaving">
+            {{ isSaving ? 'Guardando...' : 'Guardar' }}
+          </button>
         </div>
       </div>
     </div>
@@ -142,106 +136,97 @@
           <button @click="showDeleteModal = false" class="btn-close">×</button>
         </div>
         <div class="modal-body">
-          <p>¿Estás seguro de que deseas eliminar el libro <strong>{{ bookToDelete?.title }}</strong>?</p>
+          <p>¿Estás seguro de que deseas eliminar el libro <strong>{{ bookToDelete?.nombre }}</strong>?</p>
           <p class="delete-warning">Esta acción no se puede deshacer.</p>
         </div>
         <div class="modal-footer">
           <button @click="showDeleteModal = false" class="btn-cancel">Cancelar</button>
-          <button @click="deleteBook" class="btn-confirm-delete">Eliminar</button>
+          <button @click="deleteBook" class="btn-confirm-delete" :disabled="isDeleting">
+            {{ isDeleting ? 'Eliminando...' : 'Eliminar' }}
+          </button>
         </div>
       </div>
+    </div>
+
+    <!-- Notificación -->
+    <div v-if="notification.show" :class="['notification', `notification-${notification.type}`]">
+      {{ notification.message }}
     </div>
   </div>
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
-  name: 'BookCrud',
+  name: 'LibroCrud',
   data() {
     return {
       books: [],
       filteredBooks: [],
-      authors: [],
-      genres: [],
       showAddModal: false,
       showEditModal: false,
       showDeleteModal: false,
       bookToDelete: null,
       formData: this.getEmptyFormData(),
-      nextId: 1,
       filters: {
         search: '',
-        author: '',
-        genre: ''
+        status: ''
+      },
+      loading: false,
+      error: null,
+      isSaving: false,
+      isDeleting: false,
+      notification: {
+        show: false,
+        message: '',
+        type: 'success',
+        timeout: null
       }
     };
   },
   mounted() {
     this.loadBooks();
-    this.loadAuthors();
-    this.loadGenres();
   },
   methods: {
     getEmptyFormData() {
       return {
-        id: null,
-        title: '',
-        authorId: '',
-        genreId: '',
-        year: new Date().getFullYear(),
-        isbn: '',
-        description: '',
-        publisher: '',
-        pages: ''
+        codigo: '',
+        nombre: '',
+        flag: true
       };
     },
-    loadBooks() {
-      // En una app real, aquí se haría una petición a la API
+    async loadBooks() {
+      this.loading = true;
+      this.error = null;
+      
       try {
-        const storedBooks = JSON.parse(localStorage.getItem('books')) || [];
-        this.books = storedBooks;
+        const response = await axios.get('http://127.0.0.1:8001/lib/api/libros');
+        this.books = response.data;
         this.applyFilters();
-        
-        // Determinar el siguiente ID basado en los libros existentes
-        if (this.books.length > 0) {
-          this.nextId = Math.max(...this.books.map(b => b.id)) + 1;
-        }
-        
         this.$emit('update-stats');
-      } catch (e) {
-        console.error('Error al cargar libros:', e);
-        this.books = [];
-        this.filteredBooks = [];
+      } catch (error) {
+        console.error('Error al cargar libros:', error);
+        this.error = 'No se pudieron cargar los libros. Por favor, intenta de nuevo.';
+      } finally {
+        this.loading = false;
       }
     },
-    loadAuthors() {
+    formatDate(dateString) {
+      if (!dateString) return 'N/A';
+      
       try {
-        this.authors = JSON.parse(localStorage.getItem('authors')) || [];
+        const date = new Date(dateString);
+        return new Intl.DateTimeFormat('es-ES', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }).format(date);
       } catch (e) {
-        console.error('Error al cargar autores:', e);
-        this.authors = [];
+        return dateString;
       }
-    },
-    loadGenres() {
-      try {
-        this.genres = JSON.parse(localStorage.getItem('genres')) || [];
-      } catch (e) {
-        console.error('Error al cargar géneros:', e);
-        this.genres = [];
-      }
-    },
-    saveBooks() {
-      // En una app real, aquí se haría una petición a la API
-      localStorage.setItem('books', JSON.stringify(this.books));
-      this.$emit('update-stats');
-    },
-    getAuthorName(authorId) {
-      const author = this.authors.find(a => a.id === authorId);
-      return author ? author.name : 'Desconocido';
-    },
-    getGenreName(genreId) {
-      const genre = this.genres.find(g => g.id === genreId);
-      return genre ? genre.name : 'Sin clasificar';
     },
     editBook(book) {
       this.formData = { ...book };
@@ -251,90 +236,111 @@ export default {
       this.bookToDelete = book;
       this.showDeleteModal = true;
     },
-    deleteBook() {
+    async deleteBook() {
       if (!this.bookToDelete) return;
       
-      this.books = this.books.filter(b => b.id !== this.bookToDelete.id);
-      this.saveBooks();
-      this.applyFilters();
-      this.showDeleteModal = false;
-      this.bookToDelete = null;
+      this.isDeleting = true;
       
-      // Mostrar notificación
-      this.showNotification('Libro eliminado correctamente');
+      try {
+        await axios.delete(`http://127.0.0.1:8001/lib/api/libros/${this.bookToDelete.id}/`);
+        
+        // Actualizar lista local
+        this.books = this.books.filter(b => b.codigo !== this.bookToDelete.codigo);
+        this.applyFilters();
+        this.showNotification('Libro eliminado correctamente', 'success');
+      } catch (error) {
+        console.error('Error al eliminar el libro:', error);
+        this.showNotification('Error al eliminar el libro', 'error');
+      } finally {
+        this.isDeleting = false;
+        this.showDeleteModal = false;
+        this.bookToDelete = null;
+      }
     },
-    saveBook() {
-      if (!this.formData.title || !this.formData.authorId || !this.formData.genreId || !this.formData.year) {
-        alert('Por favor completa todos los campos requeridos');
+    async saveBook() {
+      if (!this.formData.codigo || !this.formData.nombre) {
+        this.showNotification('Por favor completa todos los campos requeridos', 'error');
         return;
       }
       
-      if (this.showEditModal) {
-        // Actualizar libro existente
-        const index = this.books.findIndex(b => b.id === this.formData.id);
-        if (index !== -1) {
-          this.books[index] = { ...this.formData };
+      this.isSaving = true;
+      
+      try {
+        if (this.showEditModal) {
+          // Actualizar libro existente
+          await axios.put(`http://127.0.0.1:8001/lib/api/libros/${this.formData.id}/`, this.formData);
+          
+          // Actualizar en la lista local
+          const index = this.books.findIndex(b => b.codigo === this.formData.codigo);
+          if (index !== -1) {
+            this.books[index] = { ...this.formData };
+          }
+          
+          this.showNotification('Libro actualizado correctamente', 'success');
+        } else {
+          // Crear nuevo libro
+          const response = await axios.post('http://127.0.0.1:8001/lib/api/libros/', this.formData);
+          
+          // Agregar a la lista local (con la fecha de creación que viene del servidor)
+          this.books.push(response.data);
+          
+          this.showNotification('Libro agregado correctamente', 'success');
         }
-      } else {
-        // Crear nuevo libro
-        const newBook = {
-          ...this.formData,
-          id: this.nextId++
-        };
-        this.books.push(newBook);
+        
+        this.applyFilters();
+        this.cancelModal();
+      } catch (error) {
+        console.error('Error al guardar el libro:', error);
+        
+        // Mostrar mensaje de error más específico si está disponible
+        const errorMessage = error.response?.data?.message || 
+                            'Ha ocurrido un error al guardar el libro';
+        
+        this.showNotification(errorMessage, 'error');
+      } finally {
+        this.isSaving = false;
       }
-      
-      this.saveBooks();
-      this.applyFilters();
-      this.cancelModal();
-      
-      // Mostrar notificación
-      this.showNotification(this.showEditModal ? 'Libro actualizado correctamente' : 'Libro agregado correctamente');
     },
     cancelModal() {
       this.showAddModal = false;
       this.showEditModal = false;
       this.formData = this.getEmptyFormData();
     },
-    showNotification(message) {
-      // En una app real, aquí se mostraría una notificación más elegante
-      alert(message);
+    showNotification(message, type = 'success') {
+      // Limpiar notificación anterior si existe
+      if (this.notification.timeout) {
+        clearTimeout(this.notification.timeout);
+      }
+      
+      // Mostrar nueva notificación
+      this.notification = {
+        show: true,
+        message,
+        type,
+        timeout: setTimeout(() => {
+          this.notification.show = false;
+        }, 3000)
+      };
     },
     applyFilters() {
       let result = [...this.books];
       
-      // Filtrar por texto de búsqueda (título o autor)
+      // Filtrar por texto de búsqueda (nombre o código)
       if (this.filters.search) {
         const searchTerm = this.filters.search.toLowerCase();
         result = result.filter(book => {
-          const authorName = this.getAuthorName(book.authorId).toLowerCase();
-          return book.title.toLowerCase().includes(searchTerm) || 
-                 authorName.includes(searchTerm);
+          return book.nombre.toLowerCase().includes(searchTerm) || 
+                 (book.codigo && book.codigo.toLowerCase().includes(searchTerm));
         });
       }
       
-      // Filtrar por autor
-      if (this.filters.author) {
-        result = result.filter(book => book.authorId === this.filters.author);
-      }
-      
-      // Filtrar por género
-      if (this.filters.genre) {
-        result = result.filter(book => book.genreId === this.filters.genre);
+      // Filtrar por estado
+      if (this.filters.status !== '') {
+        const statusValue = this.filters.status === 'true';
+        result = result.filter(book => book.flag === statusValue);
       }
       
       this.filteredBooks = result;
-    },
-    goToAuthors() {
-      // Emitir un evento para navegar a la sección de autores
-      // En una app real, esto podría usar el router o notificar al componente padre
-      this.$parent.navigateTo('authors');
-      this.cancelModal();
-    },
-    goToGenres() {
-      // Emitir un evento para navegar a la sección de géneros
-      this.$parent.navigateTo('genres');
-      this.cancelModal();
     }
   }
 };
@@ -346,6 +352,7 @@ export default {
   border-radius: 8px;
   padding: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
 }
 
 .crud-header {
@@ -428,6 +435,56 @@ export default {
   min-width: 150px;
 }
 
+/* Estado de carga y errores */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: #6b7280;
+}
+
+.loading-spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-message {
+  background-color: #fef2f2;
+  border: 1px solid #fee2e2;
+  border-radius: 6px;
+  padding: 15px;
+  color: #ef4444;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-retry {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.btn-retry:hover {
+  background-color: #dc2626;
+}
+
 /* Estilos para la tabla */
 .table-container {
   overflow-x: auto;
@@ -459,6 +516,24 @@ export default {
   padding: 30px !important;
   color: #6b7280;
   font-style: italic;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-active {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-inactive {
+  background-color: #fef2f2;
+  color: #991b1b;
 }
 
 .actions-cell {
@@ -561,15 +636,6 @@ export default {
   margin-bottom: 15px;
 }
 
-.form-row {
-  display: flex;
-  gap: 15px;
-}
-
-.half-width {
-  flex: 1;
-}
-
 .form-group label {
   display: block;
   margin-bottom: 5px;
@@ -591,20 +657,24 @@ export default {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
 
+.form-control:disabled {
+  background-color: #f9fafb;
+  cursor: not-allowed;
+}
+
 .form-help-text {
   margin-top: 5px;
   font-size: 0.85rem;
   color: #6b7280;
 }
 
-.link {
-  color: #3b82f6;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.link:hover {
-  text-decoration: underline;
+.form-static-value {
+  padding: 8px 12px;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 1rem;
+  color: #4b5563;
 }
 
 .btn-save, .btn-cancel, .btn-confirm-delete {
@@ -621,8 +691,13 @@ export default {
   color: white;
 }
 
-.btn-save:hover {
+.btn-save:hover:not(:disabled) {
   background-color: #2563eb;
+}
+
+.btn-save:disabled {
+  background-color: #93c5fd;
+  cursor: not-allowed;
 }
 
 .btn-cancel {
@@ -639,12 +714,50 @@ export default {
   color: white;
 }
 
-.btn-confirm-delete:hover {
+.btn-confirm-delete:hover:not(:disabled) {
   background-color: #dc2626;
+}
+
+.btn-confirm-delete:disabled {
+  background-color: #fca5a5;
+  cursor: not-allowed;
 }
 
 .delete-warning {
   color: #ef4444;
   font-weight: 500;
+}
+
+/* Notificaciones */
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-width: 300px;
+  z-index: 200;
+  animation: fadeIn 0.3s, fadeOut 0.5s 2.5s forwards;
+}
+
+.notification-success {
+  background-color: #10b981;
+  color: white;
+}
+
+.notification-error {
+  background-color: #ef4444;
+  color: white;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-20px); }
 }
 </style>
