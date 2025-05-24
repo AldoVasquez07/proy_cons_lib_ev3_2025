@@ -34,8 +34,8 @@ class Genero(models.Model):
 
 
 class AutorLibro(models.Model):
-    autor = models.ForeignKey(Autor, on_delete=models.CASCADE)
-    libro = models.ForeignKey(Libro, on_delete=models.CASCADE)
+    autor = models.ForeignKey(Autor, on_delete=models.CASCADE, related_name='autor_libros')
+    libro = models.ForeignKey(Libro, on_delete=models.CASCADE, related_name='libro_autores')
     flag = models.BooleanField(default=True)
 
     class Meta:
@@ -46,8 +46,8 @@ class AutorLibro(models.Model):
 
 
 class LibroGenero(models.Model):
-    libro = models.ForeignKey(Libro, on_delete=models.CASCADE)
-    genero = models.ForeignKey(Genero, on_delete=models.CASCADE)
+    libro = models.ForeignKey(Libro, on_delete=models.CASCADE, related_name='libro_generos')
+    genero = models.ForeignKey(Genero, on_delete=models.CASCADE, related_name='genero_libros')
     flag = models.BooleanField(default=True)
 
     class Meta:
