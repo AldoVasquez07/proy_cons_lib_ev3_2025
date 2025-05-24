@@ -93,6 +93,58 @@
         </div>
       </div>
 
+      <!-- Sección de categorías -->
+      <div class="categories-section">
+        <div class="categories-header">
+          <h3>Categorías del Libro</h3>
+          <button @click="showAddCategoryModal = true" class="btn-add-category">
+            <span class="btn-icon">+</span> Agregar Categoría
+          </button>
+        </div>
+
+        <!-- Estado de carga de categorías -->
+        <div v-if="loadingCategories" class="loading-container">
+          <div class="loading-spinner"></div>
+          <p>Cargando categorías...</p>
+        </div>
+
+        <!-- Lista de categorías del libro -->
+        <div v-if="!loadingCategories" class="categories-list">
+          <div v-if="bookCategories.length === 0" class="empty-categories">
+            <p>Este libro no tiene categorías asignadas</p>
+          </div>
+          <div v-else class="categories-grid">
+            <div v-for="categoryBook in bookCategories" :key="categoryBook.id" class="category-card">
+              <div class="category-info">
+                <h4>{{ categoryBook.categoria_nombre || 'Categoría sin nombre' }}</h4>
+                <p class="category-details">ID: {{ categoryBook.categoria }}</p>
+                <span :class="['status-badge-small', categoryBook.flag ? 'status-active' : 'status-inactive']">
+                  {{ categoryBook.flag ? 'Activo' : 'Inactivo' }}
+                </span>
+              </div>
+              <div class="category-actions">
+                <button 
+                  v-if="categoryBook.flag"
+                  @click="confirmRemoveCategory(categoryBook)" 
+                  class="btn-remove-category"
+                  title="Desactivar categoría del libro"
+                >
+                  Desactivar
+                </button>
+                <button 
+                  v-else
+                  @click="confirmReactivateCategory(categoryBook)" 
+                  class="btn-reactivate-category"
+                  title="Reactivar categoría del libro"
+                >
+                  Reactivar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Modal para agregar autor -->
       <div v-if="showAddAuthorModal" class="modal-backdrop">
         <div class="modal">
@@ -130,6 +182,48 @@
               :disabled="!selectedAuthorId || isAddingAuthor"
             >
               {{ isAddingAuthor ? 'Agregando...' : 'Agregar' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal para agregar categoría -->
+      <div v-if="showAddCategoryModal" class="modal-backdrop">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Agregar Categoría al Libro</h3>
+            <button @click="cancelAddCategory" class="btn-close">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="categorySelect">Seleccionar Categoría:</label>
+              <select v-model="selectedCategoryId" id="categorySelect" class="form-control">
+                <option value="">-- Seleccione una categoría --</option>
+                <option 
+                  v-for="category in availableCategories" 
+                  :key="category.id" 
+                  :value="category.id"
+                >
+                  {{ category.nombre }} (ID: {{ category.id }})
+                </option>
+              </select>
+            </div>
+            <div v-if="loadingAvailableCategories" class="loading-container">
+              <div class="loading-spinner-small"></div>
+              <p>Cargando categorías disponibles...</p>
+            </div>
+            <div v-if="availableCategories.length === 0 && !loadingAvailableCategories" class="no-categories">
+              <p>No hay categorías disponibles para agregar</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button @click="cancelAddCategory" class="btn-cancel">Cancelar</button>
+            <button 
+              @click="addCategoryToBook" 
+              class="btn-save" 
+              :disabled="!selectedCategoryId || isAddingCategory"
+            >
+              {{ isAddingCategory ? 'Agregando...' : 'Agregar' }}
             </button>
           </div>
         </div>
@@ -174,6 +268,45 @@
         </div>
       </div>
 
+      <!-- Modal de confirmación para desactivar categoría -->
+      <div v-if="showRemoveCategoryModal" class="modal-backdrop">
+        <div class="modal delete-modal">
+          <div class="modal-header">
+            <h3>Confirmar Desactivación</h3>
+            <button @click="showRemoveCategoryModal = false" class="btn-close">×</button>
+          </div>
+          <div class="modal-body">
+            <p>¿Estás seguro de que deseas desactivar la categoría del libro?</p>
+            <p class="delete-warning">La relación categoría-libro será marcada como inactiva.</p>
+          </div>
+          <div class="modal-footer">
+            <button @click="showRemoveCategoryModal = false" class="btn-cancel">Cancelar</button>
+            <button @click="removeCategoryFromBook" class="btn-confirm-delete" :disabled="isRemovingCategory">
+              {{ isRemovingCategory ? 'Desactivando...' : 'Desactivar' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de confirmación para reactivar categoría -->
+      <div v-if="showReactivateCategoryModal" class="modal-backdrop">
+        <div class="modal delete-modal">
+          <div class="modal-header">
+            <h3>Confirmar Reactivación</h3>
+            <button @click="showReactivateCategoryModal = false" class="btn-close">×</button>
+          </div>
+          <div class="modal-body">
+            <p>¿Estás seguro de que deseas reactivar la categoría del libro?</p>
+          </div>
+          <div class="modal-footer">
+            <button @click="showReactivateCategoryModal = false" class="btn-cancel">Cancelar</button>
+            <button @click="reactivateCategoryInBook" class="btn-confirm-reactivate" :disabled="isReactivatingCategory">
+              {{ isReactivatingCategory ? 'Reactivando...' : 'Reactivar' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Notificación -->
       <div v-if="notification.show" :class="['notification', `notification-${notification.type}`]">
         {{ notification.message }}
@@ -196,18 +329,31 @@ export default {
   data() {
     return {
       bookAuthors: [],
+      bookCategories: [],
       availableAuthors: [],
+      availableCategories: [],
       selectedAuthorId: '',
+      selectedCategoryId: '',
       showAddAuthorModal: false,
+      showAddCategoryModal: false,
       showRemoveAuthorModal: false,
       showReactivateAuthorModal: false,
+      showRemoveCategoryModal: false,
+      showReactivateCategoryModal: false,
       authorToRemove: null,
       authorToReactivate: null,
+      categoryToRemove: null,
+      categoryToReactivate: null,
       loadingAuthors: false,
+      loadingCategories: false,
       loadingAvailableAuthors: false,
+      loadingAvailableCategories: false,
       isAddingAuthor: false,
+      isAddingCategory: false,
       isRemovingAuthor: false,
       isReactivatingAuthor: false,
+      isRemovingCategory: false,
+      isReactivatingCategory: false,
       notification: {
         show: false,
         message: '',
@@ -218,6 +364,7 @@ export default {
   },
   mounted() {
     this.loadBookAuthors();
+    this.loadBookCategories();
   },
   methods: {
     getAuthHeaders() {
@@ -245,11 +392,11 @@ export default {
       }
     },
 
+    // Métodos para autores
     async loadBookAuthors() {
       this.loadingAuthors = true;
       
       try {
-        // Cargar autores del libro específico
         const response = await axios.get(
           `http://127.0.0.1:8001/lib/api/autor-libro/?libro=${this.book.id}`, 
           { headers: this.getAuthHeaders() }
@@ -267,13 +414,11 @@ export default {
       this.loadingAvailableAuthors = true;
       
       try {
-        // Cargar todos los autores disponibles
         const response = await axios.get(
           'http://127.0.0.1:8001/lib/api/autores/', 
           { headers: this.getAuthHeaders() }
         );
         
-        // Filtrar autores que ya están asignados al libro (activos)
         const assignedAuthorIds = this.bookAuthors
           .filter(ab => ab.flag)
           .map(ab => ab.autor);
@@ -307,9 +452,7 @@ export default {
           { headers: this.getAuthHeaders() }
         );
 
-        // Agregar el nuevo autor-libro a la lista
         this.bookAuthors.push(response.data);
-        
         this.showNotification('Autor agregado correctamente al libro', 'success');
         this.cancelAddAuthor();
         
@@ -356,7 +499,6 @@ export default {
           { headers: this.getAuthHeaders() }
         );
 
-        // Actualizar en la lista local
         const index = this.bookAuthors.findIndex(ab => ab.id === this.authorToRemove.id);
         if (index !== -1) {
           this.bookAuthors[index] = { ...this.bookAuthors[index], flag: false };
@@ -397,7 +539,6 @@ export default {
           { headers: this.getAuthHeaders() }
         );
 
-        // Actualizar en la lista local
         const index = this.bookAuthors.findIndex(ab => ab.id === this.authorToReactivate.id);
         if (index !== -1) {
           this.bookAuthors[index] = { ...this.bookAuthors[index], flag: true };
@@ -427,9 +568,207 @@ export default {
       this.availableAuthors = [];
     },
 
-    async openAddAuthorModal() {
-      this.showAddAuthorModal = true;
-      await this.loadAvailableAuthors();
+    // Métodos para categorías
+
+    // Métodos para categorías (sección corregida)
+    async loadBookCategories() {
+      this.loadingCategories = true;
+      
+      try {
+        const response = await axios.get(
+          `http://127.0.0.1:8001/lib/api/libro-genero/?libro=${this.book.id}`, 
+          { headers: this.getAuthHeaders() }
+        );
+        this.bookCategories = response.data;
+      } catch (error) {
+        console.error('Error al cargar categorías del libro:', error);
+        this.showNotification('Error al cargar las categorías del libro', 'error');
+      } finally {
+        this.loadingCategories = false;
+      }
+    },
+
+    async loadAvailableCategories() {
+      this.loadingAvailableCategories = true;
+      
+      try {
+        const response = await axios.get(
+          'http://127.0.0.1:8001/lib/api/generos/', 
+          { headers: this.getAuthHeaders() }
+        );
+        
+        // Obtener IDs de categorías ya asignadas y activas
+        const assignedCategoryIds = this.bookCategories
+          .filter(cb => cb.flag)
+          .map(cb => cb.genero || cb.categoria); // Compatibilidad con ambos nombres
+        
+        this.availableCategories = response.data.filter(category => 
+          category.flag && !assignedCategoryIds.includes(category.id)
+        );
+      } catch (error) {
+        console.error('Error al cargar categorías disponibles:', error);
+        this.showNotification('Error al cargar las categorías disponibles', 'error');
+      } finally {
+        this.loadingAvailableCategories = false;
+      }
+    },
+
+    async addCategoryToBook() {
+      if (!this.selectedCategoryId) {
+        this.showNotification('Por favor selecciona una categoría', 'error');
+        return;
+      }
+      
+      this.isAddingCategory = true;
+      
+      try {
+        // Usar 'genero' en lugar de 'categoria' según la API
+        const categoryBookData = {
+          genero: parseInt(this.selectedCategoryId),
+          libro: this.book.id,
+          flag: true
+        };
+
+        console.log('Enviando datos:', categoryBookData); // Debug
+
+        const response = await axios.post(
+          'http://127.0.0.1:8001/lib/api/libro-genero/',
+          categoryBookData,
+          { headers: this.getAuthHeaders() }
+        );
+
+        this.bookCategories.push(response.data);
+        this.showNotification('Categoría agregada correctamente al libro', 'success');
+        this.cancelAddCategory();
+        
+      } catch (error) {
+        console.error('Error al agregar categoría al libro:', error);
+        
+        let errorMessage = 'Error al agregar la categoría al libro';
+        
+        if (error.response?.status === 400) {
+          // Error 400 - Bad Request
+          if (error.response.data?.genero) {
+            errorMessage = `Error en el campo género: ${error.response.data.genero.join(', ')}`;
+          } else if (error.response.data?.libro) {
+            errorMessage = `Error en el campo libro: ${error.response.data.libro.join(', ')}`;
+          } else if (error.response.data?.non_field_errors) {
+            errorMessage = error.response.data.non_field_errors.join(', ');
+          } else if (error.response.data?.detail) {
+            errorMessage = error.response.data.detail;
+          } else {
+            errorMessage = 'Datos inválidos para crear la relación libro-género';
+          }
+        } else if (error.response?.status === 401) {
+          errorMessage = 'No tienes autorización para realizar esta acción';
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+        
+        this.showNotification(errorMessage, 'error');
+      } finally {
+        this.isAddingCategory = false;
+      }
+    },
+
+    confirmRemoveCategory(categoryBook) {
+      this.categoryToRemove = categoryBook;
+      this.showRemoveCategoryModal = true;
+    },
+
+    confirmReactivateCategory(categoryBook) {
+      this.categoryToReactivate = categoryBook;
+      this.showReactivateCategoryModal = true;
+    },
+
+    async removeCategoryFromBook() {
+      if (!this.categoryToRemove) return;
+      
+      this.isRemovingCategory = true;
+      
+      try {
+        const updateData = {
+          ...this.categoryToRemove,
+          flag: false
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/libro-genero/${this.categoryToRemove.id}/`,
+          updateData,
+          { headers: this.getAuthHeaders() }
+        );
+
+        const index = this.bookCategories.findIndex(cb => cb.id === this.categoryToRemove.id);
+        if (index !== -1) {
+          this.bookCategories[index] = { ...this.bookCategories[index], flag: false };
+        }
+
+        this.showNotification('Categoría desactivada del libro correctamente', 'success');
+        
+      } catch (error) {
+        console.error('Error al desactivar categoría del libro:', error);
+        
+        let errorMessage = 'Error al desactivar la categoría del libro';
+        if (error.response?.status === 401) {
+          errorMessage = 'No tienes autorización para realizar esta acción';
+        } else if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+        }
+        
+        this.showNotification(errorMessage, 'error');
+      } finally {
+        this.isRemovingCategory = false;
+        this.showRemoveCategoryModal = false;
+        this.categoryToRemove = null;
+      }
+    },
+
+    async reactivateCategoryInBook() {
+      if (!this.categoryToReactivate) return;
+      
+      this.isReactivatingCategory = true;
+      
+      try {
+        const updateData = {
+          ...this.categoryToReactivate,
+          flag: true
+        };
+
+        await axios.put(
+          `http://127.0.0.1:8001/lib/api/libro-genero/${this.categoryToReactivate.id}/`,
+          updateData,
+          { headers: this.getAuthHeaders() }
+        );
+
+        const index = this.bookCategories.findIndex(cb => cb.id === this.categoryToReactivate.id);
+        if (index !== -1) {
+          this.bookCategories[index] = { ...this.bookCategories[index], flag: true };
+        }
+
+        this.showNotification('Categoría reactivada en el libro correctamente', 'success');
+        
+      } catch (error) {
+        console.error('Error al reactivar categoría en el libro:', error);
+        
+        let errorMessage = 'Error al reactivar la categoría en el libro';
+        if (error.response?.status === 401) {
+          errorMessage = 'No tienes autorización para realizar esta acción';
+        } else if (error.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+        }
+        
+        this.showNotification(errorMessage, 'error');
+      } finally {
+        this.isReactivatingCategory = false;
+        this.showReactivateCategoryModal = false;
+        this.categoryToReactivate = null;
+      }
+    },
+
+    cancelAddCategory() {
+      this.showAddCategoryModal = false;
+      this.selectedCategoryId = '';
+      this.availableCategories = [];
     },
 
     closeDetail() {
@@ -456,6 +795,11 @@ export default {
     showAddAuthorModal(newVal) {
       if (newVal) {
         this.loadAvailableAuthors();
+      }
+    },
+    showAddCategoryModal(newVal) {
+      if (newVal) {
+        this.loadAvailableCategories();
       }
     }
   }
@@ -913,5 +1257,116 @@ export default {
 @keyframes fadeOut {
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(-20px); }
+}
+
+/* Estilos faltantes para la sección de categorías */
+
+.categories-section {
+  padding: 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.categories-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.categories-header h3 {
+  margin: 0;
+  color: #374151;
+}
+
+.btn-add-category {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-add-category:hover {
+  background-color: #059669;
+}
+
+.empty-categories {
+  text-align: center;
+  padding: 40px 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.categories-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 15px;
+}
+
+.category-card {
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.category-info h4 {
+  margin: 0 0 5px 0;
+  color: #1f2937;
+  font-size: 1rem;
+}
+
+.category-details {
+  margin: 0 0 8px 0;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.category-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-remove-category, .btn-reactivate-category {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-remove-category {
+  background-color: #ef4444;
+  color: white;
+}
+
+.btn-remove-category:hover {
+  background-color: #dc2626;
+}
+
+.btn-reactivate-category {
+  background-color: #10b981;
+  color: white;
+}
+
+.btn-reactivate-category:hover {
+  background-color: #059669;
+}
+
+.no-categories {
+  text-align: center;
+  padding: 20px;
+  color: #6b7280;
+  font-style: italic;
 }
 </style>
